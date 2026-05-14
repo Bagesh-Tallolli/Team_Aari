@@ -1,0 +1,19 @@
+{
+  "feature_columns": [
+    "age",
+    "gender",
+    "height",
+    "weight",
+    "bmi",
+    "avg_weekly_calories",
+    "required_calories",
+    "calorie_ratio"
+  ],
+  "class_map": {
+    "0": "Healthy",
+    "1": "At Risk",
+    "2": "Underweight"
+  },
+  "model_version": "1.0",
+  "description": "RandomForest classifier for malnutrition prediction"
+}
