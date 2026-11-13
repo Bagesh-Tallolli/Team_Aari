@@ -34,3 +34,4 @@ backend/storage/reports/*.pdf
 Thumbs.db
 .vscode/
 .idea/
+
