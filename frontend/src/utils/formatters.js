@@ -13,7 +13,22 @@ export const formatTime = (date) => {
 export const formatDateTime = (date) => {
   if (!date) return 'N/A';
   try {
-    return format(new Date(date), 'dd MMM yyyy, hh:mm:ss a');
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'N/A';
+    const dateStr = d.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+    const timeStr = d.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+    return `${dateStr}, ${timeStr} IST`;
   } catch {
     return 'N/A';
   }

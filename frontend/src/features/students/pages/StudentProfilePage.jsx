@@ -235,17 +235,19 @@ function StudentProfilePage() {
   const foodColumns = [
     {
       key: 'timestamp',
-      label: 'Date & Exact Time',
+      label: 'Date & Exact Time (IST)',
       render: (value) => {
         if (!value) return 'N/A';
         const d = new Date(value);
         if (isNaN(d.getTime())) return 'N/A';
         const dateStr = d.toLocaleDateString('en-IN', {
+          timeZone: 'Asia/Kolkata',
           day: '2-digit',
           month: 'short',
           year: 'numeric',
         });
         const timeStr = d.toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit',
@@ -254,7 +256,12 @@ function StudentProfilePage() {
         return (
           <div className="flex flex-col">
             <span className="text-white font-bold">{dateStr}</span>
-            <span className="text-xs text-indigo-400 font-mono font-semibold">{timeStr}</span>
+            <span className="text-xs text-emerald-400 font-mono font-semibold flex items-center gap-1.5 mt-0.5">
+              <span>{timeStr}</span>
+              <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-sans font-bold">
+                IST
+              </span>
+            </span>
           </div>
         );
       },

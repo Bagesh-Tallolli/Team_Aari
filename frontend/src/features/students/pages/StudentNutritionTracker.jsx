@@ -781,19 +781,26 @@ function StudentNutritionTracker() {
                             <div className="flex flex-col">
                               <span className="text-white font-bold">
                                 {new Date(log.logged_at).toLocaleDateString('en-IN', {
+                                  timeZone: 'Asia/Kolkata',
                                   day: '2-digit',
                                   month: 'short',
                                   year: 'numeric',
                                 })}
                               </span>
-                              <span className="text-xs text-indigo-400 font-mono flex items-center gap-1 mt-0.5 font-semibold">
-                                <Clock size={12} className="text-indigo-400 shrink-0" />
-                                {new Date(log.logged_at).toLocaleTimeString('en-IN', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  second: '2-digit',
-                                  hour12: true,
-                                })}
+                              <span className="text-xs text-emerald-400 font-mono flex items-center gap-1.5 mt-0.5 font-semibold">
+                                <Clock size={12} className="text-emerald-400 shrink-0" />
+                                <span>
+                                  {new Date(log.logged_at).toLocaleTimeString('en-IN', {
+                                    timeZone: 'Asia/Kolkata',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: true,
+                                  })}
+                                </span>
+                                <span className="text-[10px] px-1 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-sans font-bold">
+                                  IST
+                                </span>
                               </span>
                             </div>
                           ) : (
