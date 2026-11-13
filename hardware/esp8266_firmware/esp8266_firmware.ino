@@ -1,5 +1,5 @@
 /*
- * ESP8266 Firmware - Complete System (Updated Pin Setup)
+ * ESP8266 Firmware - Complete System (Updated Pin Setup & Port 5003)
  * Pin map matching the new wiring:
  *
  *  RC522 : SS=D2  SCK=D5  MOSI=D7  MISO=D6  RST=D0  VCC=3.3V  GND=GND
@@ -17,12 +17,14 @@
 #include <Servo.h>
 
 // ============================================
-// PIN DEFINITIONS (NEW WIRING)
+// NETWORK CONFIGURATION
 // ============================================
 
-#define WIFI_SSID     "Admin-Office"
-#define WIFI_PASSWORD "Drait@1982"
-#define BASE_URL      "http://192.168.144.78:5001"
+// NOTE: Both the ESP8266 and your Laptop MUST be connected to the exact same Wi-Fi!
+// Your laptop is currently connected to "PANCHAYYA 2044" with IP: 192.168.137.236
+#define WIFI_SSID     "PANCHAYYA 2044"
+#define WIFI_PASSWORD "Drait@1982"   // <-- Set to your PANCHAYYA 2044 Wi-Fi password
+#define BASE_URL      "http://192.168.137.236:5001"
 
 // RC522 — Software SPI (New Pins)
 #define SS_PIN    D2      // GPIO4
@@ -87,7 +89,7 @@ void   processCard();
 
 void connectToWiFi() {
   Serial.println("--------------------------------");
-  Serial.print("Connecting to ");
+  Serial.print("Connecting to Wi-Fi SSID: ");
   Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
@@ -102,10 +104,13 @@ void connectToWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println();
-    Serial.print("Connected. IP: ");
+    Serial.print("✓ Connected to Wi-Fi! ESP IP: ");
     Serial.println(WiFi.localIP());
+    Serial.print("✓ Backend Target: ");
+    Serial.println(BASE_URL);
   } else {
-    Serial.println("\nWiFi failed. Restarting...");
+    Serial.println("\n❌ Wi-Fi connection failed. Retrying...");
+    delay(3000);
     ESP.restart();
   }
   Serial.println("--------------------------------");
@@ -113,9 +118,6 @@ void connectToWiFi() {
 
 // ============================================
 // SERVO CONTROL
-// ============================================
-// NOTE: D1 = GPIO5 is a standard PWM pin, safe for Servo.
-// We detach after every move to prevent jitter and save power.
 // ============================================
 
 void setServoPosition(int angle) {
@@ -159,9 +161,14 @@ String requestScan(String uid) {
       Serial.println("Response OK");
     } else {
       response = "{\"error\":\"HTTP " + String(httpCode) + "\"}";
+      Serial.print("HTTP Error: ");
+      Serial.println(httpCode);
     }
   } else {
-    response = "{\"error\":\"Connection Failed\"}";
+    String errStr = http.errorToString(httpCode);
+    response = "{\"error\":\"" + errStr + "\"}";
+    Serial.print("Connection Error: ");
+    Serial.println(errStr);
   }
 
   http.end();
