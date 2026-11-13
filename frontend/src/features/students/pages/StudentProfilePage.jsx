@@ -235,16 +235,41 @@ function StudentProfilePage() {
   const foodColumns = [
     {
       key: 'timestamp',
-      label: 'Date',
-      render: (value) => (value ? new Date(value).toLocaleDateString() : 'N/A'),
+      label: 'Date & Exact Time',
+      render: (value) => {
+        if (!value) return 'N/A';
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return 'N/A';
+        const dateStr = d.toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
+        const timeStr = d.toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        });
+        return (
+          <div className="flex flex-col">
+            <span className="text-white font-bold">{dateStr}</span>
+            <span className="text-xs text-indigo-400 font-mono font-semibold">{timeStr}</span>
+          </div>
+        );
+      },
     },
-    { key: 'foodName', label: 'Food Item' },
+    { key: 'foodName', label: 'Food Item', render: (val) => <span className="font-bold text-white">{val}</span> },
     {
       key: 'servedGrams',
       label: 'Served (g)',
-      render: (value) => `${value}g`,
+      render: (value) => <span className="text-slate-200 font-semibold">{value}g</span>,
     },
-    { key: 'calories', label: 'Calories (kcal)' },
+    { 
+      key: 'calories', 
+      label: 'Calories (kcal)',
+      render: (val) => <span className="text-orange-400 font-bold">{val} kcal</span>
+    },
   ];
 
   return (

@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   ArrowRight,
   FileText,
-  Users
+  Users,
+  Clock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import MainLayout from '../../../components/layout/MainLayout.jsx';
@@ -775,14 +776,29 @@ function StudentNutritionTracker() {
                   <tbody>
                     {studentData.food_history.map((log, idx) => (
                       <tr key={idx} className="border-b border-slate-800 hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 px-4 text-slate-300 font-medium">
-                          {log.logged_at
-                            ? new Date(log.logged_at).toLocaleDateString('en-IN', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })
-                            : 'N/A'}
+                        <td className="py-3 px-4 text-slate-300 font-medium whitespace-nowrap">
+                          {log.logged_at ? (
+                            <div className="flex flex-col">
+                              <span className="text-white font-bold">
+                                {new Date(log.logged_at).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                              <span className="text-xs text-indigo-400 font-mono flex items-center gap-1 mt-0.5 font-semibold">
+                                <Clock size={12} className="text-indigo-400 shrink-0" />
+                                {new Date(log.logged_at).toLocaleTimeString('en-IN', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                  hour12: true,
+                                })}
+                              </span>
+                            </div>
+                          ) : (
+                            'N/A'
+                          )}
                         </td>
                         <td className="py-3 px-4 text-white font-bold">{log.food_item}</td>
                         <td className="py-3 px-4 text-slate-200 font-medium">{log.served_grams}g</td>

@@ -11,7 +11,12 @@ export const formatTime = (date) => {
 };
 
 export const formatDateTime = (date) => {
-  return format(new Date(date), 'MMM dd, yyyy HH:mm');
+  if (!date) return 'N/A';
+  try {
+    return format(new Date(date), 'dd MMM yyyy, hh:mm:ss a');
+  } catch {
+    return 'N/A';
+  }
 };
 
 export const formatRelativeTime = (date) => {
@@ -114,16 +119,4 @@ export const formatPhone = (phone) => {
     return cleaned.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
   }
   return phone;
-};
-
-// Student age calculation
-export const calculateAge = (dateOfBirth) => {
-  const today = new Date();
-  const birth = new Date(dateOfBirth);
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age--;
-  }
-  return age;
 };
