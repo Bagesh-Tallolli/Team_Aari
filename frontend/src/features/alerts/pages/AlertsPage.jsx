@@ -1,86 +1,87 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MainLayout from '../../../components/layout/MainLayout.jsx';
 import Card from '../../../components/common/Card.jsx';
 import { RiskBadge } from '../../../components/common/Badge.jsx';
 import { SkeletonCard } from '../../../components/common/Skeleton.jsx';
 import { formatRelativeTime } from '../../../utils/formatters.js';
 import apiService from '../../../services/apiService.js';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 function AlertsPage() {
+  const navigate = useNavigate();
   const [alerts, setAlerts] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [resolvingId, setResolvingId] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => {
-    const fetchAlerts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchAlerts = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // Fetch students and health data
-        const studentsResult = await apiService.data.getAllStudents();
-        const healthResult = await apiService.data.getHealthStatus();
+      // Fetch real health alerts from backend endpoint GET /api/alerts
+      const result = await apiService.alerts.getAll(filter === 'all' ? null : filter);
 
-        if (studentsResult.success && healthResult.success) {
-          const students = studentsResult.data || [];
-          const healthStatuses = healthResult.data || [];
+      if (result.success && result.data) {
+        const rawAlerts = Array.isArray(result.data.alerts)
+          ? result.data.alerts
+          : Array.isArray(result.data)
+            ? result.data
+            : [];
 
-          // Create alerts from health statuses
-          const generatedAlerts = healthStatuses
-            .map((health) => {
-              const student = students.find((s) => s.id === health.student_id);
-              const status = health.status?.toLowerCase();
-              
-              let riskLevel = 'healthy';
-              let message = 'Student is in good health';
+        const normalized = rawAlerts.map((a) => ({
+          id: a.id,
+          studentId: a.student_id,
+          studentName: a.student_name || `Student ${a.student_id}`,
+          bmi: a.current_bmi ?? a.bmi,
+          riskLevel: a.risk_level || 'at_risk',
+          severity: a.severity || 'warning',
+          message: a.message || 'Health alert generated',
+          resolved: a.resolved || false,
+          timestamp: a.created_at || new Date().toISOString(),
+        }));
 
-              if (status === 'underweight') {
-                riskLevel = 'critical';
-                message = `Underweight status: BMI ${parseFloat(health.bmi).toFixed(1)}`;
-              } else if (status === 'at risk') {
-                riskLevel = 'at_risk';
-                message = `At-risk status: BMI ${parseFloat(health.bmi).toFixed(1)}`;
-              }
-
-              return {
-                id: health.id,
-                studentName: student?.name || 'Unknown Student',
-                studentId: health.student_id,
-                bmi: health.bmi,
-                calories: health.calories,
-                protein: health.protein,
-                riskLevel,
-                message,
-                timestamp: health.created_at || new Date().toISOString(),
-              };
-            })
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-          // Filter alerts
-          let filtered = generatedAlerts;
-          if (filter !== 'all') {
-            filtered = generatedAlerts.filter((alert) => alert.riskLevel === filter);
-          }
-
-          setAlerts(filtered);
-        } else {
-          setError('Failed to fetch alerts');
-          setAlerts([]);
+        setAlerts(normalized);
+        if (result.stats || result.data.stats) {
+          setStats(result.stats || result.data.stats);
         }
-      } catch (err) {
-        console.error('Error fetching alerts:', err);
-        setError(err.message);
-        setAlerts([]);
-      } finally {
-        setLoading(false);
+      } else {
+        throw new Error(result.error || 'Failed to fetch alerts');
       }
-    };
-
-    fetchAlerts();
+    } catch (err) {
+      console.error('Error fetching alerts:', err);
+      setError(err.message || 'Error loading alerts from server');
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
   }, [filter]);
 
-  if (loading) {
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
+
+  const handleResolve = async (alertId) => {
+    try {
+      setResolvingId(alertId);
+      const res = await apiService.alerts.resolve(alertId);
+      if (res.success) {
+        // Remove resolved alert from active list or mark resolved
+        setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+      } else {
+        alert(res.error || 'Failed to resolve alert');
+      }
+    } catch (err) {
+      alert('Error resolving alert: ' + (err.message || err));
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  if (loading && alerts.length === 0) {
     return (
       <MainLayout>
         <div className="space-y-4">
@@ -95,9 +96,24 @@ function AlertsPage() {
   return (
     <MainLayout>
       <div className="space-y-6 animate-fadeIn">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Alerts</h1>
-          <p className="text-slate-400 mt-1">Monitor student nutrition alerts</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Health & Nutrition Alerts</h1>
+            <p className="text-slate-400 mt-1">Live alerts aggregated from student screenings and meals</p>
+          </div>
+          {stats && (
+            <div className="flex gap-3 text-xs font-semibold">
+              <span className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30">
+                Critical: {stats.critical || 0}
+              </span>
+              <span className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                At Risk: {stats.at_risk || 0}
+              </span>
+              <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Healthy: {stats.healthy || 0}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Filter Buttons */}
@@ -108,7 +124,7 @@ function AlertsPage() {
               onClick={() => setFilter(f)}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${
                 filter === f
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                   : 'bg-slate-800/50 text-slate-300 hover:bg-slate-800'
               }`}
             >
@@ -127,31 +143,52 @@ function AlertsPage() {
         <div className="space-y-3">
           {alerts.length === 0 ? (
             <Card variant="default" className="text-center py-12">
-              <p className="text-slate-400">No alerts found</p>
+              <AlertCircle size={40} className="mx-auto text-slate-500 mb-3" />
+              <p className="text-slate-300 font-medium">No unresolved alerts for filter: &ldquo;{filter}&rdquo;</p>
+              <p className="text-slate-500 text-sm mt-1">All screened students in this category are currently meeting guidelines.</p>
             </Card>
           ) : (
             alerts.map((alert) => (
               <Card
                 key={alert.id}
                 variant={alert.riskLevel === 'critical' ? 'alert' : 'default'}
-                className="flex items-start justify-between p-6"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-4"
               >
                 <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="text-lg font-bold text-white">
                       {alert.studentName}
                     </h3>
                     <RiskBadge level={alert.riskLevel} />
+                    <span className="text-xs text-slate-400">
+                      ID: #{alert.studentId}
+                    </span>
                   </div>
                   <p className="text-slate-300">{alert.message}</p>
-                  <div className="text-xs text-slate-500 mt-2 space-y-1">
-                    <p>BMI: {parseFloat(alert.bmi).toFixed(1)}</p>
+                  <div className="text-xs text-slate-400 mt-2 flex gap-4">
+                    {alert.bmi != null && (
+                      <p>BMI: <span className="text-white font-medium">{parseFloat(alert.bmi).toFixed(1)}</span></p>
+                    )}
                     <p>{formatRelativeTime(alert.timestamp)}</p>
                   </div>
                 </div>
-                <button className="px-4 py-2 rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 transition-colors text-sm font-medium whitespace-nowrap ml-4">
-                  View Profile
-                </button>
+
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                  <button
+                    onClick={() => handleResolve(alert.id)}
+                    disabled={resolvingId === alert.id}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 transition-colors text-sm font-medium whitespace-nowrap border border-emerald-500/30 disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={16} />
+                    {resolvingId === alert.id ? 'Resolving...' : 'Mark Resolved'}
+                  </button>
+                  <button
+                    onClick={() => navigate(`/students/${alert.studentId}`)}
+                    className="px-3.5 py-2 rounded-lg bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 transition-colors text-sm font-medium whitespace-nowrap border border-indigo-500/30"
+                  >
+                    View Profile
+                  </button>
+                </div>
               </Card>
             ))
           )}

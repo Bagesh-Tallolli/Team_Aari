@@ -13,26 +13,15 @@ async function initializeApp() {
 
 initializeApp()
 
-// Auto-unregister any MSW service workers in development when mocks are disabled
-if (import.meta.env.DEV && (import.meta.env.VITE_ENABLE_MOCK_API === 'false' || import.meta.env.VITE_ENABLE_MOCK_API === false)) {
-  if ('serviceWorker' in navigator) {
-    // eslint-disable-next-line no-console
-    console.info('[startup] Ensuring no mock service worker is registered');
-    navigator.serviceWorker.getRegistrations().then((regs) => {
-      regs.forEach((reg) => {
-        try {
-          reg.unregister().then((ok) => {
-            // eslint-disable-next-line no-console
-            if (ok) console.info('[startup] Unregistered service worker:', reg.scope);
-          });
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn('[startup] Failed to unregister service worker', e);
-        }
+// Unconditionally unregister any legacy MSW / service workers so latest backend APIs are always used directly
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && import.meta.env.VITE_ENABLE_MOCK_API !== 'true') {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    regs.forEach((reg) => {
+      reg.unregister().then((ok) => {
+        if (ok) console.info('[startup] Unregistered legacy service worker:', reg.scope);
       });
-    }).catch((e) => {
-      // eslint-disable-next-line no-console
-      console.warn('[startup] Error reading service worker registrations', e);
     });
-  }
+  }).catch((e) => {
+    console.warn('[startup] Error checking service workers:', e);
+  });
 }

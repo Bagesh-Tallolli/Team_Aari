@@ -157,9 +157,10 @@ apiClient.interceptors.request.use(
   (error) => {
     // Request error
     try {
-      // eslint-disable-next-line no-console
       console.error('[apiService] Request error:', error.message || error);
-    } catch (e) {/* ignore */}
+    } catch {
+      /* ignore */
+    }
     return Promise.reject(error);
   }
 );
@@ -184,14 +185,12 @@ apiClient.interceptors.response.use(
 const apiService = {
   // Auth endpoints
   auth: {
-    signup: async (email, password, name, role = 'staff') => {
+    signup: async (email, password, name, role = 'staff', phone = null, school_name = null) => {
       try {
-        const response = await apiClient.post('/auth/signup', {
-          email,
-          password,
-          name,
-          role,
-        });
+        const payload = typeof email === 'object'
+          ? email
+          : { email, password, name, role, phone, school_name };
+        const response = await apiClient.post('/auth/signup', payload);
         return {
           success: response.data.success,
           data: response.data.data,
@@ -199,7 +198,7 @@ const apiService = {
       } catch (error) {
         return {
           success: false,
-          error: error.response?.data?.message || error.message,
+          error: error.response?.data?.message || (error.response?.data?.errors ? error.response.data.errors.map(e => e.message).join(', ') : error.message),
         };
       }
     },
@@ -434,9 +433,12 @@ const apiService = {
       }
     },
 
-    getAll: async (page = 1, limit = 150) => {
+    getAll: async (page = 1, limit = 150, search = null, riskLevel = null) => {
       try {
-        const response = await cachedRequest('get', '/students', { page, limit });
+        const params = { page, limit };
+        if (search) params.search = search;
+        if (riskLevel) params.riskLevel = riskLevel;
+        const response = await cachedRequest('get', '/students', params);
         return {
           success: true,
           data: Array.isArray(response.data?.data?.students) ? response.data.data.students : response.data?.data || [],
@@ -500,6 +502,360 @@ const apiService = {
           }
         }
 
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    getDietRecommendation: async (id) => {
+      try {
+        const response = await cachedRequest('get', `/students/${id}/diet-recommendation`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    generateDietRecommendation: async (id, preference = 'veg') => {
+      try {
+        const response = await apiClient.post(`/students/${id}/diet-recommendation/generate`, { preference });
+        invalidateCache(`students/${id}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    getWeeklyAnalysis: async (id, forceRefresh = false, endDate = null) => {
+      try {
+        const params = {};
+        if (forceRefresh) params.forceRefresh = 'true';
+        if (endDate) params.endDate = endDate;
+        const response = forceRefresh
+          ? await apiClient.get(`/students/${id}/weekly-analysis`, { params })
+          : await cachedRequest('get', `/students/${id}/weekly-analysis`, params);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    generateWeeklyAnalysis: async (id, endDate = null) => {
+      try {
+        const response = await apiClient.post(`/students/${id}/weekly-analysis/generate`, { endDate });
+        invalidateCache(`students/${id}`);
+        invalidateCache('weekly-analysis');
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    predictMalnutrition: async (data, studentId = null) => {
+      try {
+        const url = studentId ? `/students/${studentId}/predict-malnutrition` : '/students/predict-malnutrition';
+        const response = await apiClient.post(url, data);
+        if (data.save_to_db && studentId) {
+          invalidateCache(`students/${studentId}`);
+          invalidateCache('students');
+        }
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    sendMalnutritionReport: async (id, payload = {}) => {
+      try {
+        const response = await apiClient.post(`/students/${id}/malnutrition-report/send`, payload);
+        invalidateCache(`students/${id}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+          message: response.data?.message || 'Malnutrition report sent to parent email',
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    getMalnutritionReportPdfUrl: (id) => {
+      const baseUrl = apiClient.defaults.baseURL || 'http://localhost:5001/api';
+      return `${baseUrl}/students/${id}/malnutrition-report/pdf`;
+    },
+
+    // Parent Contact & Weekly Report Delivery (Phase 7)
+    getParentContact: async (id) => {
+      try {
+        const response = await cachedRequest('get', `/students/${id}/parent-contact`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    updateParentContact: async (id, contactData) => {
+      try {
+        const response = await apiClient.put(`/students/${id}/parent-contact`, contactData);
+        invalidateCache(`students/${id}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    previewWeeklyReport: async (id) => {
+      try {
+        const response = await apiClient.get(`/students/${id}/weekly-report/preview`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    sendWeeklyReport: async (id, forceResend = false) => {
+      try {
+        const response = await apiClient.post(`/students/${id}/weekly-report/send`, { forceResend });
+        invalidateCache(`students/${id}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    getDeliveryHistory: async (id) => {
+      try {
+        const response = await cachedRequest('get', `/students/${id}/weekly-report/delivery-history`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    sendParentVerification: async (id) => {
+      try {
+        const response = await apiClient.post(`/students/${id}/parent-contact/send-verification`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+          message: response.data?.message,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    verifyParentOtp: async (id, otpCode) => {
+      try {
+        const response = await apiClient.post(`/students/${id}/parent-contact/verify-otp`, { otp_code: otpCode });
+        invalidateCache(`students/${id}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+          message: response.data?.message,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    withdrawParentConsent: async (id, reason = 'Withdrawn by user') => {
+      try {
+        const response = await apiClient.post(`/students/${id}/parent-contact/withdraw-consent`, { reason });
+        invalidateCache(`students/${id}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+          message: response.data?.message,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    getConsentHistory: async (id) => {
+      try {
+        const response = await cachedRequest('get', `/students/${id}/parent-contact/consent-history`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+
+    getPdfUrl: (id) => `/api/students/${id}/weekly-report/pdf`,
+  },
+
+  // Diet Recommendations (Phase 5)
+  dietRecommendations: {
+    get: async (studentId) => {
+      try {
+        const response = await cachedRequest('get', `/diet-recommendations/${studentId}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+    generate: async (studentId, preference = 'veg') => {
+      try {
+        const response = await apiClient.post(`/diet-recommendations/${studentId}/generate`, { preference });
+        invalidateCache(`students/${studentId}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+  },
+
+  // Weekly Nutrition Analysis (Phase 6)
+  weeklyAnalysis: {
+    getByStudent: async (studentId, forceRefresh = false, endDate = null) => {
+      return apiService.students.getWeeklyAnalysis(studentId, forceRefresh, endDate);
+    },
+    generate: async (studentId, endDate = null) => {
+      return apiService.students.generateWeeklyAnalysis(studentId, endDate);
+    },
+    getById: async (reportId) => {
+      try {
+        const response = await cachedRequest('get', `/weekly-analysis/${reportId}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+    getTrends: async (reportId) => {
+      try {
+        const response = await cachedRequest('get', `/weekly-analysis/${reportId}/trends`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.response?.data?.message || error.message,
+        };
+      }
+    },
+  },
+
+  // Parent Report Deliveries (Phase 7)
+  parentDelivery: {
+    getContact: async (studentId) => apiService.students.getParentContact(studentId),
+    updateContact: async (studentId, data) => apiService.students.updateParentContact(studentId, data),
+    preview: async (studentId) => apiService.students.previewWeeklyReport(studentId),
+    send: async (studentId, forceResend = false) => apiService.students.sendWeeklyReport(studentId, forceResend),
+    getHistory: async (studentId) => apiService.students.getDeliveryHistory(studentId),
+    getPdfUrl: (studentId) => apiService.students.getPdfUrl(studentId),
+    sendVerification: async (studentId) => apiService.students.sendParentVerification(studentId),
+    verifyOtp: async (studentId, otp) => apiService.students.verifyParentOtp(studentId, otp),
+    withdrawConsent: async (studentId, reason) => apiService.students.withdrawParentConsent(studentId, reason),
+    getConsentHistory: async (studentId) => apiService.students.getConsentHistory(studentId),
+    getDeliveryById: async (deliveryId) => {
+      try {
+        const response = await cachedRequest('get', `/parent-report-deliveries/${deliveryId}`);
+        return {
+          success: true,
+          data: response.data?.data || response.data,
+        };
+      } catch (error) {
         return {
           success: false,
           error: error.response?.data?.message || error.message,

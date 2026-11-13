@@ -5,14 +5,11 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 
 /**
- * SQLite Database Connection (sql.js)
- * Pure JavaScript implementation - no compilation needed for MVP
+ * ⚠️ DEPRECATED & ISOLATED: Legacy SQLite Configuration (sql.js)
  * 
- * Features:
- * - Synchronous queries with async wrapper for compatibility
- * - Automatic schema initialization
- * - Persistence to disk
- * - Parameterized queries prevent SQL injection
+ * PostgreSQL (backend/src/config/db.js) is the canonical production database.
+ * This file is retained exclusively as an offline/in-memory fallback module.
+ * No production controllers, routes, or services depend on this module.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

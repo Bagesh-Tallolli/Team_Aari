@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import env from '../config/env.js';
 import { AppError } from './errorHandler.js';
 import { HTTP_STATUS } from '../utils/httpStatus.js';
+import logger from '../utils/logger.js';
 
 /**
  * Authentication Middleware
@@ -92,4 +93,37 @@ export const verifyToken = (token) => {
     }
     throw new AppError('Invalid token', HTTP_STATUS.UNAUTHORIZED);
   }
+};
+
+/**
+ * Role-Based Authorization Middleware
+ * Ensures authenticated user has one of the allowed roles (e.g. 'admin', 'staff')
+ * 
+ * @param {...string} allowedRoles
+ * @returns {Function} Express middleware
+ */
+export const authorizeRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+        success: false,
+        message: 'Authentication required',
+        statusCode: HTTP_STATUS.UNAUTHORIZED,
+      });
+    }
+
+    const userRole = (req.user.role || '').toLowerCase();
+    const hasRole = allowedRoles.some((r) => r.toLowerCase() === userRole);
+
+    if (!hasRole) {
+      logger.warn(`⛔ Access forbidden: User ${req.user.id || req.user.email} with role '${userRole}' lacks required roles [${allowedRoles.join(', ')}]`);
+      return res.status(HTTP_STATUS.FORBIDDEN).json({
+        success: false,
+        message: 'Forbidden: Insufficient role permissions for this operation',
+        statusCode: HTTP_STATUS.FORBIDDEN,
+      });
+    }
+
+    next();
+  };
 };

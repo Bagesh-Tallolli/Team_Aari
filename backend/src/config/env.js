@@ -37,6 +37,15 @@ const env = {
 
   // Logging
   LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
+
+  // Email & SMTP Configuration (Phase 7 & Real-Time Admin Dispatch)
+  SMTP_HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
+  SMTP_PORT: parseInt(process.env.SMTP_PORT || '465', 10),
+  SMTP_USER: process.env.SMTP_USER || 'bagesh.rvce@gmail.com',
+  SMTP_PASSWORD: process.env.SMTP_PASSWORD || '',
+  SMTP_SECURE: process.env.SMTP_SECURE !== 'false',
+  EMAIL_FROM: process.env.EMAIL_FROM || '"PM POSHAN Administration" <bagesh.rvce@gmail.com>',
+  SMTP_TEST_MODE: process.env.SMTP_TEST_MODE === 'true',
 };
 
 /**

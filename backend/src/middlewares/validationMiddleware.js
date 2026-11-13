@@ -68,7 +68,9 @@ export const authSchemas = {
       'string.max': 'Name must not exceed 100 characters',
       'any.required': 'Name is required',
     }),
-    role: Joi.string().valid('admin', 'staff').optional().default('staff'),
+    phone: Joi.string().allow('', null).optional(),
+    school_name: Joi.string().allow('', null).optional(),
+    role: Joi.string().valid('staff').optional().default('staff'),
   }),
   login: Joi.object({
     email: Joi.string().email().lowercase().required().messages({
@@ -153,7 +155,25 @@ export const studentSchemas = {
       'string.max': 'RFID card ID must not exceed 100 characters',
       'any.required': 'RFID card ID is required',
     }),
-    email: Joi.string().email().lowercase().optional().allow(null),
+    email: Joi.string().email().lowercase().optional().allow(null, ''),
+    admission_number: Joi.string().max(100).optional().allow(null, ''),
+    dob: Joi.string().optional().allow(null, ''),
+    class_grade: Joi.string().max(50).optional().allow(null, ''),
+    section: Joi.string().max(20).optional().allow(null, ''),
+    academic_year: Joi.string().max(50).optional().allow(null, ''),
+    school_name: Joi.string().max(150).optional().allow(null, ''),
+    parent_name: Joi.string().max(150).optional().allow(null, ''),
+    parent_email: Joi.string().email().lowercase().optional().allow(null, ''),
+    parent_phone: Joi.string().max(50).optional().allow(null, ''),
+    parent_report_consent: Joi.boolean().optional().default(false),
+  }),
+  updateParentContact: Joi.object({
+    parent_name: Joi.string().max(150).optional().allow(null, ''),
+    parent_email: Joi.string().email().lowercase().optional().allow(null, ''),
+    parent_phone: Joi.string().max(50).optional().allow(null, ''),
+    parent_email_verified: Joi.boolean().optional(),
+    parent_report_consent: Joi.boolean().optional(),
+    auto_weekly_report_enabled: Joi.boolean().optional(),
   }),
   getStudent: Joi.object({
     id: Joi.number().integer().positive().required().messages({

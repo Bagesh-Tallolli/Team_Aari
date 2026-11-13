@@ -7,6 +7,12 @@ import * as servingRuleService from './servingRuleService.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { HTTP_STATUS } from '../utils/httpStatus.js';
 import logger from '../utils/logger.js';
+import {
+  getSchoolMealTarget,
+  getFullDayRequirement,
+  assessPediatricBmi,
+  calculateServedNutrients,
+} from '../config/nutritionStandards.js';
 
 /**
  * RFID Scan Service
@@ -22,7 +28,7 @@ import logger from '../utils/logger.js';
  * @param {string} rfidCardId - RFID card ID from scanner
  * @returns {Promise<object>} { student_id, name, bmi, grams, calories, avg_weekly_calories }
  */
-export const processRfidScan = async (rfidCardId) => {
+export const processRfidScan = async (rfidCardId, options = {}) => {
   try {
     if (!rfidCardId || rfidCardId.trim() === '') {
       throw new AppError('RFID card ID is required', HTTP_STATUS.BAD_REQUEST);
@@ -44,37 +50,42 @@ export const processRfidScan = async (rfidCardId) => {
     const grams = servingRuleService.getRiceGrams(student.age);
     logger.debug(`📊 Serving calculated: ${grams}g for age ${student.age}`);
 
-    // Step 3: Calculate calories (130 kcal per 100g of rice)
-    const calories = parseFloat(((grams / 100) * 130).toFixed(2));
-    logger.debug(`🔥 Calories calculated: ${calories}kcal for ${grams}g`);
+    // Step 3: Calculate verified nutrient contribution
+    const nutrients = calculateServedNutrients('rice', grams);
+    const schoolMealTarget = getSchoolMealTarget(student.age);
+    const fullDayRequirement = getFullDayRequirement(student.age, student.gender);
+    const heightInMeters = (parseFloat(student.height) || 120) / 100;
+    const weightKg = parseFloat(student.weight) || 25;
+    const currentBmi = parseFloat((weightKg / (heightInMeters * heightInMeters)).toFixed(2));
+    const pediatricAssessment = assessPediatricBmi(student.age, student.gender, currentBmi);
 
-    // Step 4: Log food serving to database (AUTOMATIC)
-    const foodLogEntry = {
-      food_item: 'rice',
-      served_grams: grams,
-      estimated_calories: calories,
-      protein: parseFloat(((grams / 100) * 2.7).toFixed(2)), // ~2.7g protein per 100g rice
-      carbs: parseFloat(((grams / 100) * 28).toFixed(2)), // ~28g carbs per 100g rice
-      fats: parseFloat(((grams / 100) * 0.3).toFixed(2)), // ~0.3g fat per 100g rice
-    };
+    // Step 4: Separation of scanning and food serving logging
+    // A successful RFID scan alone MUST NEVER log a food serving. Serving confirmation
+    // requires real weight verification from the HX711 load cell via /api/hardware/served.
+    let loggedEntry = null;
+    if (options && options.autoLog === true) {
+      loggedEntry = await foodLogModel.createFoodLog(student.id, foodLogEntry);
+      logger.info(`📝 Food serving logged via explicit autoLog: ${student.name} - ${grams}g rice (${nutrients.calories}kcal)`);
+    } else {
+      logger.info(`🔍 RFID scan verified for ${student.name}. Serving pending hardware dispensation.`);
+    }
 
-    await foodLogModel.createFoodLog(student.id, foodLogEntry);
-    logger.info(`📝 Food logged successfully: ${student.name} - ${grams}g rice (${calories}kcal)`);
-
-    // Step 5: Calculate weekly average calories (FOR AI MODEL)
+    // Step 5: Calculate daily-aggregated weekly average calories
     const avgWeeklyCalories = await analyticsService.getWeeklyAverage(student.id);
-    logger.info(`📊 Weekly average updated: ${avgWeeklyCalories} kcal/day`);
+    logger.info(`📊 Daily-aggregated weekly average: ${avgWeeklyCalories} kcal/day`);
 
-    // Step 6: Get AI prediction (MALNUTRITION DETECTION) ← NEW
+    // Step 6: Get AI prediction & pediatric evaluation
     let aiPrediction = null;
     try {
       const prediction = await predictionService.getPrediction(student.id, 'veg');
       aiPrediction = predictionService.formatPredictionResponse(prediction);
-      logger.info(`🤖 AI Prediction: ${prediction.status} (confidence: ${prediction.confidence})`);
+      logger.info(`🤖 Assessment: ${prediction.status} (confidence: ${prediction.confidence})`);
     } catch (error) {
-      logger.warn(`⚠️  AI prediction failed, continuing without it: ${error.message}`);
-      // Continue without prediction - not a critical failure
+      logger.warn(`⚠️ Prediction failed, continuing without it: ${error.message}`);
     }
+
+    const schoolMealCalorieGap = Math.max(0, parseFloat((schoolMealTarget.calories - nutrients.calories).toFixed(2)));
+    const remainingDailyCalories = Math.max(0, parseFloat((fullDayRequirement.calories - nutrients.calories).toFixed(2)));
 
     // Step 7: Return comprehensive response for machine and frontend
     return {
@@ -83,18 +94,28 @@ export const processRfidScan = async (rfidCardId) => {
       name: student.name,
       age: student.age,
       gender: student.gender,
-      bmi: parseFloat(student.current_bmi) || 0,
+      bmi: currentBmi,
       risk_level: student.risk_level || 'unknown',
       rfid_card_id: student.rfid_card_id,
       grams: grams,
-      calories: calories,
-      avg_weekly_calories: avgWeeklyCalories,
-      // AI prediction results (for frontend display)
+      calories: nutrients.calories,
+      protein: nutrients.protein,
+      // Clearly separated benchmarks
+      school_meal_calories_target: schoolMealTarget.calories,
+      school_meal_protein_target: schoolMealTarget.protein,
+      school_meal_calorie_gap: schoolMealCalorieGap,
+      full_day_calories_required: fullDayRequirement.calories,
+      full_day_protein_required: fullDayRequirement.protein,
+      remaining_daily_calories: remainingDailyCalories,
+      seven_day_avg_daily_calories: avgWeeklyCalories,
+      pediatric_screening: pediatricAssessment,
+      is_served_record: true,
+      is_confirmed_consumed: false,
+      // AI prediction results
       nutrition_status: aiPrediction?.status || null,
       nutrition_confidence: aiPrediction?.confidence || null,
       nutrition_reason: aiPrediction?.reason || null,
       diet_recommendations: aiPrediction?.diet_plan || null,
-      // Full prediction details (for backend/advanced queries)
       ai_prediction: aiPrediction,
       message: 'Food served and logged successfully',
       timestamp: new Date().toISOString(),
@@ -114,7 +135,7 @@ export const processRfidScan = async (rfidCardId) => {
  * @param {string} rfidCardId - RFID card ID from scanner
  * @returns {Promise<object>} Detailed meal composition and nutrition
  */
-export const processRfidScanDetailed = async (rfidCardId) => {
+export const processRfidScanDetailed = async (rfidCardId, options = {}) => {
   try {
     if (!rfidCardId || rfidCardId.trim() === '') {
       throw new AppError('RFID card ID is required', HTTP_STATUS.BAD_REQUEST);
@@ -140,18 +161,22 @@ export const processRfidScanDetailed = async (rfidCardId) => {
     const totalGrams = mealComposition.total || 300;
     const totalCalories = nutritionEstimate.estimated_calories || 0;
 
-    // Step 4: Log food serving to database (AUTOMATIC)
-    const foodLogEntry = {
-      food_item: 'rice with dal and vegetables',
-      served_grams: totalGrams,
-      estimated_calories: totalCalories,
-      protein: nutritionEstimate.estimated_protein_g || 0,
-      carbs: nutritionEstimate.estimated_carbs_g || 0,
-      fats: nutritionEstimate.estimated_fat_g || 0,
-    };
-
-    await foodLogModel.createFoodLog(student.id, foodLogEntry);
-    logger.info(`📝 Food logged successfully: ${student.name} - ${totalGrams}g meal (${totalCalories}kcal)`);
+    // Step 4: Separation of scanning and food serving logging
+    let loggedEntry = null;
+    if (options && options.autoLog === true) {
+      const foodLogEntry = {
+        food_item: 'rice with dal and vegetables',
+        served_grams: totalGrams,
+        estimated_calories: totalCalories,
+        protein: nutritionEstimate.estimated_protein_g || 0,
+        carbs: nutritionEstimate.estimated_carbs_g || 0,
+        fats: nutritionEstimate.estimated_fat_g || 0,
+      };
+      loggedEntry = await foodLogModel.createFoodLog(student.id, foodLogEntry);
+      logger.info(`📝 Food logged successfully via explicit autoLog: ${student.name} - ${totalGrams}g meal (${totalCalories}kcal)`);
+    } else {
+      logger.info(`📊 Detailed scan completed for ${student.name}. Serving pending hardware dispensation.`);
+    }
 
     // Step 5: Calculate weekly metrics for AI model
     const avgWeeklyCalories = await analyticsService.getWeeklyAverage(student.id);

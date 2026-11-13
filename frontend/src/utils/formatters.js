@@ -27,21 +27,31 @@ export const calculateBMI = (weight, height) => {
 };
 
 // Get BMI category
-export const getBMICategory = (bmi) => {
-  if (bmi === null) return 'unknown';
+export const getBMICategory = (bmi, age = null) => {
+  if (bmi === null || bmi === undefined) return 'unknown';
+  const numBmi = parseFloat(bmi);
+  const numAge = age ? Number(age) : 10;
   
-  for (const [key, range] of Object.entries(BMI_RANGES)) {
-    if (bmi >= range.min && bmi < range.max) {
-      return key;
-    }
-  }
-  return 'obese';
+  // Pediatric age-appropriate screening thresholds (WHO 5-19 reference approximations)
+  const thinnessThreshold = numAge <= 10 ? 13.5 : 15.0;
+  const overweightThreshold = numAge <= 10 ? 19.0 : 22.0;
+
+  if (numBmi < thinnessThreshold) return 'thinness';
+  if (numBmi > overweightThreshold) return 'overweight';
+  return 'normal';
 };
 
 // Get BMI status
-export const getBMIStatus = (bmi) => {
-  const category = getBMICategory(bmi);
-  return BMI_RANGES[category];
+export const getBMIStatus = (bmi, age = null) => {
+  const category = getBMICategory(bmi, age);
+  return BMI_RANGES[category] || BMI_RANGES.normal;
+};
+
+// Format pediatric BMI screening label
+export const formatPediatricScreening = (bmi, age, gender) => {
+  if (!bmi) return 'Pending screening';
+  const status = getBMIStatus(bmi, age);
+  return `${status.label} (Screening indicator)`;
 };
 
 // Format numbers

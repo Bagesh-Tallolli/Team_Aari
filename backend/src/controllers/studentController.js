@@ -15,17 +15,7 @@ import { successResponse, HTTP_STATUS } from '../utils/httpStatus.js';
  * @returns { success, student, message }
  */
 export const registerStudent = asyncHandler(async (req, res) => {
-  const { name, age, gender, height, weight, rfid_card_id, email } = req.body;
-
-  const student = await studentService.registerStudent({
-    name,
-    age,
-    gender,
-    height,
-    weight,
-    rfid_card_id,
-    email,
-  });
+  const student = await studentService.registerStudent(req.body);
 
   res.status(HTTP_STATUS.CREATED).json(
     successResponse(student, 'Student registered successfully', HTTP_STATUS.CREATED)
@@ -81,6 +71,12 @@ export const getStudentProfile = asyncHandler(async (req, res) => {
  */
 export const getStudentDetails = asyncHandler(async (req, res) => {
   const { id: studentId } = req.params;
+  const forceRefresh = req.query.forceRefresh === 'true';
+
+  if (forceRefresh) {
+    const predictionService = await import('../services/predictionService.js');
+    await predictionService.getPrediction(parseInt(studentId, 10), 'veg');
+  }
 
   const result = await studentService.getComprehensiveStudentProfile(parseInt(studentId, 10));
 
@@ -103,10 +99,32 @@ export const getAtRiskStudents = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * POST /api/students/predict-malnutrition
+ * POST /api/students/:id/predict-malnutrition
+ * Predict malnutrition risk based on new height, weight, and average weekly calories
+ */
+export const predictMalnutrition = asyncHandler(async (req, res) => {
+  const predictionService = await import('../services/predictionService.js');
+  const studentId = req.params.id ? parseInt(req.params.id, 10) : (req.body.student_id ? parseInt(req.body.student_id, 10) : null);
+
+  const payload = {
+    ...req.body,
+    student_id: studentId,
+  };
+
+  const result = await predictionService.predictCustomMalnutrition(payload);
+
+  res.status(HTTP_STATUS.OK).json(
+    successResponse(result, 'Malnutrition prediction and clinical risk assessment generated', HTTP_STATUS.OK)
+  );
+});
+
 export default {
   registerStudent,
   listStudents,
   getStudentProfile,
   getStudentDetails,
   getAtRiskStudents,
+  predictMalnutrition,
 };

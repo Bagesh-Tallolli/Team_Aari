@@ -18,23 +18,37 @@ export const BMI_CATEGORIES = {
   OBESE: 'obese',
 };
 
-// Daily Nutrition Targets (per student)
+// School Meal Norms (PM POSHAN Statutory Guidelines)
+export const PM_POSHAN_TARGETS = {
+  PRIMARY: { calories: 450, protein: 12.0 },
+  UPPER_PRIMARY: { calories: 700, protein: 20.0 },
+};
+
+// Full-Day Reference Nutrition Targets (ICMR-NIN 2020 RDA)
 export const NUTRITION_TARGETS = {
-  PROTEIN_GRAMS: 50,
-  CALORIES: 2000,
-  CARBS_GRAMS: 300,
-  FATS_GRAMS: 65,
+  PRIMARY_DAILY_CALORIES: 1500,
+  UPPER_PRIMARY_DAILY_CALORIES: 2200,
+  PROTEIN_GRAMS: 32,
+  CALORIES: 1800,
+  CARBS_GRAMS: 250,
+  FATS_GRAMS: 45,
 };
 
-// BMI Thresholds for Risk Detection
-export const BMI_THRESHOLDS = {
-  UNDERWEIGHT: 18.5,
-  NORMAL_MAX: 24.9,
-  OVERWEIGHT_MAX: 29.9,
-  OBESE_MIN: 30,
-};
+// Alert Thresholds (Evaluated against school-meal targets, not 24h intake)
+export const ALERT_THRESHOLDS = {
+  // School-meal deficit threshold
+  SCHOOL_MEAL_CALORIE_DEFICIT_THRESHOLD: 200, // Deficit > 200 kcal against PM POSHAN target is concerning
+  SCHOOL_MEAL_PROTEIN_DEFICIT_THRESHOLD: 6,   // Deficit > 6g protein is concerning
 
-// HTTP Status Codes
+  // BMI based
+  BMI_UNDERWEIGHT_THRESHOLD: 18.5,
+  BMI_OBESE_THRESHOLD: 30,
+
+  // Nutrition based
+  CALORIE_DEFICIT_THRESHOLD: 1500, // Less than this is critical
+  CALORIE_EXCESS_THRESHOLD: 2500,  // More than this is concerning
+  PROTEIN_DEFICIT_THRESHOLD: 40,   // Less than this is concerning
+};
 export const HTTP_STATUS = {
   OK: 200,
   CREATED: 201,
@@ -60,17 +74,7 @@ export const JWT = {
   REFRESH_EXPIRY: '30d',
 };
 
-// Alert Thresholds
-export const ALERT_THRESHOLDS = {
-  // BMI based
-  BMI_UNDERWEIGHT_THRESHOLD: 18.5,
-  BMI_OBESE_THRESHOLD: 30,
-  
-  // Nutrition based
-  CALORIE_DEFICIT_THRESHOLD: 1500, // Less than this is critical
-  CALORIE_EXCESS_THRESHOLD: 2500,  // More than this is concerning
-  PROTEIN_DEFICIT_THRESHOLD: 40,   // Less than this is concerning
-};
+
 
 // Common Error Messages
 export const ERROR_MESSAGES = {

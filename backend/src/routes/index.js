@@ -7,6 +7,10 @@ import alertRoutes from './alertRoutes.js';
 import dataRoutes from './dataRoutes.js';
 import aiRoutes from './aiRoutes.js';
 import analyticsRoutes from './analyticsRoutes.js';
+import hardwareRoutes from './hardwareRoutes.js';
+import dietRecommendationRoutes from './dietRecommendationRoutes.js';
+import weeklyNutritionAnalysisRoutes from './weeklyNutritionAnalysisRoutes.js';
+import parentReportDeliveryRoutes from './parentReportDeliveryRoutes.js';
 
 /**
  * Route Aggregator
@@ -26,6 +30,11 @@ export const setupRoutes = (app) => {
   app.use('/api/data', dataRoutes);
   app.use('/api/ai', aiRoutes);
   app.use('/api/analytics', analyticsRoutes);
+  app.use('/api/hardware', hardwareRoutes);
+  app.use('/api/diet-recommendations', dietRecommendationRoutes);
+  app.use('/api/weekly-analysis', weeklyNutritionAnalysisRoutes);
+  app.use('/api/parent-report-deliveries', parentReportDeliveryRoutes);
+  app.use('/api/parent', parentReportDeliveryRoutes);
 
   return app;
 };

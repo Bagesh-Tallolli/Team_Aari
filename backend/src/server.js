@@ -13,7 +13,7 @@ const isPortConflictError = (error) => error?.code === 'EADDRINUSE';
 const isPermissionError = (error) => error?.code === 'EACCES';
 
 const openHttpServer = (port) => new Promise((resolve, reject) => {
-  const server = app.listen(port);
+  const server = app.listen(port, '0.0.0.0');
 
   server.once('listening', () => resolve(server));
   server.once('error', (error) => reject(error));

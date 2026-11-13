@@ -1,6 +1,6 @@
 import * as studentModel from '../models/studentModel.js';
 import * as foodNutritionModel from '../models/foodNutritionModel.js';
-import * as foodLogsModel from '../models/foodLogsModel.js';
+import * as foodLogsModel from '../models/foodLogModel.js';
 import * as healthStatusModel from '../models/healthStatusModel.js';
 import * as dietPlanModel from '../models/dietPlanModel.js';
 import * as aiService from '../services/aiService.js';

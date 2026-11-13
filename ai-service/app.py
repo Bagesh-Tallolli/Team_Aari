@@ -52,18 +52,80 @@ def load_model():
         print(f"❌ Error loading model: {str(e)}")
         return False
 
+# Initialize model on module load
+load_model()
+
 
 # ============================================================
-# Age-Based Calorie Requirements (ICMR Standards)
+# PM POSHAN Mandated School Meal Targets
 # ============================================================
-def get_required_calories(age):
-    """Get age-appropriate calorie requirements per ICMR"""
-    if age <= 8:
-        return 1400
+def get_school_meal_target(age):
+    """PM POSHAN (Mid-Day Meal) Mandated Norms: Primary 450 kcal, Upper Primary 700 kcal"""
+    return 450 if age <= 10 else 700
+
+# ============================================================
+# Age-Based Full-Day Calorie Requirements (ICMR-NIN 2020 RDA)
+# ============================================================
+def get_required_calories(age, gender=1, bmi=None):
+    """Get age- and sex-appropriate daily calorie requirements per ICMR-NIN 2020 RDA"""
+    if age <= 9:
+        base = 1500
     elif age <= 12:
-        return 1800
+        base = 2060 if gender == 0 else 2220
+    elif age <= 15:
+        base = 2400 if gender == 0 else 2860
     else:
-        return 2200
+        base = 2500 if gender == 0 else 3320
+    return base
+
+# ============================================================
+# WHO Pediatric Growth References 5-19 Years
+# ============================================================
+WHO_PEDIATRIC_BMI = {
+    'male': {
+        6: {'minus3': 12.1, 'minus2': 13.0, 'median': 15.3, 'plus1': 16.8, 'plus2': 18.5},
+        7: {'minus3': 12.3, 'minus2': 13.1, 'median': 15.5, 'plus1': 17.2, 'plus2': 19.2},
+        8: {'minus3': 12.4, 'minus2': 13.3, 'median': 15.8, 'plus1': 17.7, 'plus2': 20.1},
+        9: {'minus3': 12.6, 'minus2': 13.6, 'median': 16.2, 'plus1': 18.3, 'plus2': 21.1},
+        10: {'minus3': 12.8, 'minus2': 14.0, 'median': 16.6, 'plus1': 19.0, 'plus2': 22.2},
+        11: {'minus3': 13.2, 'minus2': 14.5, 'median': 17.2, 'plus1': 19.9, 'plus2': 23.5},
+        12: {'minus3': 13.6, 'minus2': 15.0, 'median': 17.8, 'plus1': 20.8, 'plus2': 24.8},
+        13: {'minus3': 14.2, 'minus2': 15.5, 'median': 18.5, 'plus1': 21.8, 'plus2': 25.9},
+        14: {'minus3': 14.7, 'minus2': 16.0, 'median': 19.2, 'plus1': 22.7, 'plus2': 26.9},
+        15: {'minus3': 15.3, 'minus2': 16.6, 'median': 19.9, 'plus1': 23.6, 'plus2': 27.7},
+        16: {'minus3': 15.8, 'minus2': 17.1, 'median': 20.5, 'plus1': 24.4, 'plus2': 28.9},
+    },
+    'female': {
+        6: {'minus3': 11.8, 'minus2': 12.7, 'median': 15.2, 'plus1': 16.9, 'plus2': 18.8},
+        7: {'minus3': 12.0, 'minus2': 12.9, 'median': 15.4, 'plus1': 17.4, 'plus2': 19.7},
+        8: {'minus3': 12.2, 'minus2': 13.1, 'median': 15.7, 'plus1': 17.9, 'plus2': 20.6},
+        9: {'minus3': 12.4, 'minus2': 13.5, 'median': 16.1, 'plus1': 18.6, 'plus2': 21.7},
+        10: {'minus3': 12.8, 'minus2': 13.9, 'median': 16.6, 'plus1': 19.3, 'plus2': 22.8},
+        11: {'minus3': 13.2, 'minus2': 14.4, 'median': 17.3, 'plus1': 20.2, 'plus2': 24.1},
+        12: {'minus3': 13.7, 'minus2': 14.9, 'median': 18.0, 'plus1': 21.3, 'plus2': 25.4},
+        13: {'minus3': 14.3, 'minus2': 15.4, 'median': 18.8, 'plus1': 22.3, 'plus2': 26.6},
+        14: {'minus3': 14.7, 'minus2': 16.0, 'median': 19.6, 'plus1': 23.3, 'plus2': 27.7},
+        15: {'minus3': 15.1, 'minus2': 16.4, 'median': 20.2, 'plus1': 24.0, 'plus2': 28.6},
+        16: {'minus3': 15.3, 'minus2': 16.8, 'median': 20.7, 'plus1': 24.7, 'plus2': 29.3},
+    }
+}
+
+def assess_pediatric_bmi(age, gender, bmi):
+    """Assess child BMI using WHO 5-19 references (assistive screening indicator)"""
+    sex = 'female' if gender == 0 else 'male'
+    ref_age = min(max(int(round(age)), 6), 16)
+    cutoffs = WHO_PEDIATRIC_BMI[sex][ref_age]
+    
+    if bmi < cutoffs['minus3']:
+        return 'Severe Thinness', 'critical', '< -3 SD'
+    elif bmi < cutoffs['minus2']:
+        return 'Thinness', 'at_risk', '-3 SD to -2 SD'
+    elif bmi > cutoffs['plus2']:
+        return 'Obese for Age', 'critical', '> +2 SD'
+    elif bmi > cutoffs['plus1']:
+        return 'Overweight for Age', 'at_risk', '+1 SD to +2 SD'
+    else:
+        return 'Healthy Weight', 'healthy', '-2 SD to +1 SD'
 
 # ============================================================
 # ADVANCED DIET RECOMMENDATION DATABASE
@@ -354,26 +416,42 @@ def explain_status(bmi, calorie_ratio, status):
     }
     return explanations.get(status, "")
 
-def generate_diet_plan(age, status, deficit, gender, preference):
+def generate_diet_plan(age, status, deficit, gender, preference, data=None):
     """
     Generate personalized diet plan based on deficit and preferences
     preference: 'veg' or 'non_veg'
     """
+    if data is None:
+        data = {}
+        
     deficit_category = get_deficit_category(deficit)
     recommendation = DIET_RECOMMENDATIONS.get(deficit_category, {})
     
     plan = {
         "deficit_category": deficit_category,
         "deficit_kcal": round(deficit, 0),
+        "todays_intake": round(float(data.get('todays_calories', 0)), 0),
+        "total_required": round(float(data.get('required_calories', 0)), 0),
+        "remaining_deficit": round(float(data.get('remaining_calories', deficit)), 0),
         "breakfast": {
-            "type": preference,
-            "options": recommendation.get("breakfast", {}).get(preference, []),
-            "suggested": recommendation.get("breakfast", {}).get(preference, [{}])[0] if recommendation.get("breakfast", {}).get(preference) else {}
+            "veg": {
+                "options": recommendation.get("breakfast", {}).get("veg", []),
+                "suggested": recommendation.get("breakfast", {}).get("veg", [{}])[0] if recommendation.get("breakfast", {}).get("veg") else {}
+            },
+            "non_veg": {
+                "options": recommendation.get("breakfast", {}).get("non_veg", []),
+                "suggested": recommendation.get("breakfast", {}).get("non_veg", [{}])[0] if recommendation.get("breakfast", {}).get("non_veg") else {}
+            }
         },
         "dinner": {
-            "type": preference,
-            "options": recommendation.get("dinner", {}).get(preference, []),
-            "suggested": recommendation.get("dinner", {}).get(preference, [{}])[0] if recommendation.get("dinner", {}).get(preference) else {}
+            "veg": {
+                "options": recommendation.get("dinner", {}).get("veg", []),
+                "suggested": recommendation.get("dinner", {}).get("veg", [{}])[0] if recommendation.get("dinner", {}).get("veg") else {}
+            },
+            "non_veg": {
+                "options": recommendation.get("dinner", {}).get("non_veg", []),
+                "suggested": recommendation.get("dinner", {}).get("non_veg", [{}])[0] if recommendation.get("dinner", {}).get("non_veg") else {}
+            }
         },
         "snacks": recommendation.get("snacks", []),
         "notes": generate_diet_notes(status, deficit_category)
@@ -432,121 +510,273 @@ def health_check():
 @app.route('/predict', methods=['POST'])
 def predict_malnutrition():
     """
-    🎯 MAIN PREDICTION ENDPOINT
-    Real-time ML prediction with explainability and personalized diet recommendation
-    
-    Request:
-    {
-        "age": 12,
-        "gender": 0,  # 0=Female, 1=Male
-        "height": 150.0,  # cm
-        "weight": 45.0,   # kg
-        "avg_weekly_calories": 1600,
-        "preference": "veg"  # "veg" or "non_veg"
-    }
-    
-    Response includes:
-    - Status prediction (Healthy/At Risk/Underweight)
-    - Confidence score
-    - BMI and calorie ratio
-    - Explanation of the reason
-    - Personalized diet plan with food options
+    🎯 MAIN PREDICTION ENDPOINT - RESTORED RANDOM FOREST INFERENCE
+    Executes actual RandomForestClassifier inference with pediatric WHO growth screening
+    and PM POSHAN 2021 school-meal fulfillment benchmarks.
     """
     try:
         if model is None:
-            return jsonify({
-                'error': 'Model not available',
-                'message': 'ML model not loaded. Run: python generate_dataset.py && python train_model.py',
-                'status_code': 503
-            }), 503
+            load_model()
+            if model is None:
+                return jsonify({
+                    'success': False,
+                    'status': 'model_unavailable',
+                    'error': 'ML model not available on server',
+                    'message': 'Random Forest model could not be loaded. Please run train_model.py.',
+                    'status_code': 503
+                }), 503
         
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'Invalid request body', 'status_code': 400}), 400
+            return jsonify({
+                'success': False,
+                'status': 'insufficient_data',
+                'error': 'Invalid request body',
+                'status_code': 400
+            }), 400
         
         # Extract and validate input
         try:
-            age = int(data.get('age'))
-            gender = int(data.get('gender', 0))
-            height = float(data.get('height'))
-            weight = float(data.get('weight'))
-            avg_weekly_calories = float(data.get('avg_weekly_calories', 1600))
-            preference = data.get('preference', 'veg').lower()
-            
+            if 'age' not in data or data.get('age') is None:
+                return jsonify({
+                    'success': False,
+                    'status': 'insufficient_data',
+                    'error': 'Missing required parameter: age',
+                    'status_code': 400
+                }), 400
+
+            age = int(round(float(data.get('age'))))
+            raw_gender = data.get('gender', 1)
+            if isinstance(raw_gender, str):
+                gender = 0 if raw_gender.lower().startswith('f') else 1
+            else:
+                gender = 0 if int(raw_gender) == 0 else 1
+
+            height = float(data.get('height') or data.get('height_cm') or 120.0)
+            weight = float(data.get('weight') or data.get('weight_kg') or 25.0)
+            avg_weekly_calories = float(data.get('avg_weekly_calories') or data.get('seven_day_avg_daily_calories') or 400.0)
+            preference = str(data.get('preference', 'veg')).lower()
             if preference not in ['veg', 'non_veg']:
                 preference = 'veg'
         except (ValueError, TypeError) as e:
             return jsonify({
+                'success': False,
+                'status': 'insufficient_data',
                 'error': 'Invalid input type',
                 'message': str(e),
                 'status_code': 400
             }), 400
         
-        # Validate ranges
-        if not (6 <= age <= 15):
-            return jsonify({'error': 'Age must be 6-15 years', 'status_code': 400}), 400
-        if not (100 <= height <= 180):
-            return jsonify({'error': 'Height must be 100-180 cm', 'status_code': 400}), 400
-        if not (15 <= weight <= 70):
-            return jsonify({'error': 'Weight must be 15-70 kg', 'status_code': 400}), 400
+        # Validate ranges for school children (ages 6 to 15)
+        if not (6 <= age <= 16):
+            return jsonify({'success': False, 'status': 'insufficient_data', 'error': 'Age must be 6-16 years for school screening', 'status_code': 400}), 400
+        if not (80 <= height <= 190):
+            return jsonify({'success': False, 'status': 'insufficient_data', 'error': 'Height must be between 80 and 190 cm', 'status_code': 400}), 400
+        if not (12 <= weight <= 80):
+            return jsonify({'success': False, 'status': 'insufficient_data', 'error': 'Weight must be between 12 and 80 kg', 'status_code': 400}), 400
         
-        # Calculate derived features
+        # 1. Pediatric WHO Anthropometric Growth Screening
         bmi = calculate_bmi(height, weight)
-        required_calories = get_required_calories(age)
-        calorie_ratio = avg_weekly_calories / required_calories if required_calories > 0 else 0
+        pediatric_label, pediatric_risk, z_range = assess_pediatric_bmi(age, gender, bmi)
         
-        # Prepare features for ML model (in the same order as training)
-        # Features: ['age', 'gender', 'height', 'weight', 'bmi', 'avg_weekly_calories', 'required_calories', 'calorie_ratio']
-        features = np.array([[
-            age, gender, height, weight, bmi, 
-            avg_weekly_calories, required_calories, calorie_ratio
-        ]])
+        z_category_map = {
+            'Severe Thinness': -2,
+            'Thinness': -1,
+            'Healthy Weight': 0,
+            'Overweight for Age': 1,
+            'Obese for Age': 2
+        }
+        pediatric_z_score_category = z_category_map.get(pediatric_label, 0)
         
-        # Make prediction
-        prediction = model.predict(features)[0]
-        probabilities = model.predict_proba(features)[0]
-        confidence = float(max(probabilities))
-        
-        # Map prediction to status
+        # 2. PM POSHAN School Meal Targets (Primary: 450 kcal / 12g protein; Upper Primary: 700 kcal / 20g protein)
+        sm_cals_default = get_school_meal_target(age)
+        sm_prot_default = 12.0 if age <= 10 else 20.0
+        school_meal_calories_target = float(data.get('school_meal_calories_target') or sm_cals_default)
+        school_meal_protein_target = float(data.get('school_meal_protein_target') or sm_prot_default)
+
+        # 3. Full-Day Energy & Protein Requirements (ICMR-NIN 2020 RDA)
+        fd_cals_default = get_required_calories(age, gender)
+        fd_prot_default = 23.0 if age <= 9 else (32.0 if gender == 1 else 33.0) if age <= 12 else (45.0 if gender == 1 else 43.0)
+        full_day_calories_required = float(data.get('full_day_calories_required') or fd_cals_default)
+        full_day_protein_required = float(data.get('full_day_protein_required') or fd_prot_default)
+
+        # 4. Actual Recorded School Meal Intake
+        actual_school_calories_served = float(data.get('actual_school_calories_served') or avg_weekly_calories)
+        actual_school_protein_served = float(data.get('actual_school_protein_served') or (actual_school_calories_served * 0.032))
+
+        # 5. Fulfillment Percentages
+        sm_cal_fulfil_pct = min(200.0, max(0.0, (actual_school_calories_served / school_meal_calories_target) * 100.0)) if school_meal_calories_target > 0 else 0.0
+        sm_prot_fulfil_pct = min(200.0, max(0.0, (actual_school_protein_served / school_meal_protein_target) * 100.0)) if school_meal_protein_target > 0 else 0.0
+
+        # 6. Seven-day daily averages and recorded active days
+        seven_day_avg_daily_calories = float(data.get('seven_day_avg_daily_calories') or avg_weekly_calories)
+        seven_day_avg_daily_protein = float(data.get('seven_day_avg_daily_protein') or (seven_day_avg_daily_calories * 0.032))
+        recorded_school_days_count = int(data.get('recorded_school_days_count') or data.get('recorded_days') or 5)
+
+        # 7. Construct Feature Array in exact order matching model training schema
+        feature_dict = {
+            'age': age,
+            'gender': gender,
+            'height_cm': height,
+            'weight_kg': weight,
+            'bmi': bmi,
+            'pediatric_z_score_category': pediatric_z_score_category,
+            'full_day_calories_required': full_day_calories_required,
+            'full_day_protein_required': full_day_protein_required,
+            'school_meal_calories_target': school_meal_calories_target,
+            'school_meal_protein_target': school_meal_protein_target,
+            'actual_school_calories_served': actual_school_calories_served,
+            'actual_school_protein_served': actual_school_protein_served,
+            'school_meal_calorie_fulfillment_pct': sm_cal_fulfil_pct,
+            'school_meal_protein_fulfillment_pct': sm_prot_fulfil_pct,
+            'seven_day_avg_daily_calories': seven_day_avg_daily_calories,
+            'seven_day_avg_daily_protein': seven_day_avg_daily_protein,
+            'recorded_school_days_count': recorded_school_days_count
+        }
+
+        feature_columns = model_metadata.get('feature_columns') if model_metadata else list(feature_dict.keys())
+        features_vector = [feature_dict.get(col, 0.0) for col in feature_columns]
+        input_df = pd.DataFrame([features_vector], columns=feature_columns)
+
+        # 8. 🎯 REAL RANDOM FOREST INFERENCE
+        raw_pred = model.predict(input_df)
+        predicted_class_id = int(raw_pred[0])
+
+        # 9. REAL RANDOM FOREST PREDICTION PROBABILITIES
+        if hasattr(model, 'predict_proba'):
+            raw_proba = model.predict_proba(input_df)[0]
+            # Map probabilities safely across model classes [0: Healthy, 1: At Risk, 2: Underweight]
+            prob_healthy = float(round(float(raw_proba[0]), 4)) if len(raw_proba) > 0 else 0.0
+            prob_at_risk = float(round(float(raw_proba[1]), 4)) if len(raw_proba) > 1 else 0.0
+            prob_underweight = float(round(float(raw_proba[2]), 4)) if len(raw_proba) > 2 else 0.0
+            confidence = float(round(float(np.max(raw_proba)), 4))
+        else:
+            prob_healthy = 1.0 if predicted_class_id == 0 else 0.0
+            prob_at_risk = 1.0 if predicted_class_id == 1 else 0.0
+            prob_underweight = 1.0 if predicted_class_id == 2 else 0.0
+            confidence = 1.0
+
         status_map = {0: 'Healthy', 1: 'At Risk', 2: 'Underweight'}
-        status = status_map.get(prediction, 'Unknown')
-        
-        # Calculate calorie deficit
-        deficit = required_calories - avg_weekly_calories
-        
-        # Generate explanation
-        reason = explain_status(bmi, calorie_ratio, status)
-        
-        # Generate personalized diet plan
-        diet_plan = generate_diet_plan(age, status, deficit, gender, preference)
-        
-        # Build comprehensive response
+        status = status_map.get(predicted_class_id, 'Healthy')
+        risk_level_map = {0: 'healthy', 1: 'at_risk', 2: 'critical'}
+        risk_level = risk_level_map.get(predicted_class_id, 'healthy')
+
+        # 10. Separated Gaps & Metrics
+        school_meal_gap_kcal = max(0.0, float(round(school_meal_calories_target - actual_school_calories_served, 1)))
+        school_meal_gap_protein = max(0.0, float(round(school_meal_protein_target - actual_school_protein_served, 1)))
+        remaining_daily_deficit = max(0.0, float(round(full_day_calories_required - actual_school_calories_served, 1)))
+
+        # 11. Contributing Factors
+        contributing_factors = [
+            {
+                'factor': 'School Meal Calorie Fulfillment',
+                'value': f"{sm_cal_fulfil_pct:.1f}%",
+                'benchmark': f"{school_meal_calories_target:.0f} kcal PM POSHAN target",
+                'importance_rank': 1,
+                'status': 'optimal' if sm_cal_fulfil_pct >= 85 else ('moderate_deficit' if sm_cal_fulfil_pct >= 60 else 'severe_deficit')
+            },
+            {
+                'factor': 'School Meal Protein Fulfillment',
+                'value': f"{sm_prot_fulfil_pct:.1f}%",
+                'benchmark': f"{school_meal_protein_target:.1f}g PM POSHAN target",
+                'importance_rank': 2,
+                'status': 'optimal' if sm_prot_fulfil_pct >= 85 else 'deficit'
+            },
+            {
+                'factor': 'Pediatric BMI-for-Age (WHO)',
+                'value': f"BMI {bmi:.1f}",
+                'benchmark': f"{pediatric_label} ({z_range})",
+                'importance_rank': 3,
+                'status': pediatric_risk
+            }
+        ]
+
+        # 12. Standardized Educational & Clinical Disclaimer
+        reason = (
+            f"AI Screening Result: {status} (RandomForest prediction confidence {confidence*100:.1f}%). "
+            f"Independent Pediatric Screening: BMI {bmi:.1f} ({pediatric_label}, {z_range} WHO 5-19 references). "
+            f"School meal served today: {actual_school_calories_served:.0f} kcal against PM POSHAN target of {school_meal_calories_target:.0f} kcal "
+            f"({sm_cal_fulfil_pct:.0f}% fulfilled). Estimated full-day requirement: {full_day_calories_required:.0f} kcal."
+        )
+
+        # 13. Personalized Diet Plan Recommendations
+        diet_plan = generate_diet_plan(age, status, remaining_daily_deficit, gender, preference, data)
+        diet_plan['school_meal_gap'] = {
+            'target_kcal': school_meal_calories_target,
+            'served_kcal': actual_school_calories_served,
+            'deficit_kcal': school_meal_gap_kcal,
+            'target_protein_g': school_meal_protein_target,
+            'served_protein_g': actual_school_protein_served,
+            'deficit_protein_g': school_meal_gap_protein,
+            'status': 'GOAL_MET' if school_meal_gap_kcal == 0 else 'DEFICIT',
+        }
+
+        # 14. Structured API Response with explicit separation
         response = {
             'success': True,
             'status': status,
-            'confidence': round(confidence, 4),
+            'predicted_class_id': predicted_class_id,
+            'risk_level': risk_level,
+            'confidence': confidence,
             'probabilities': {
-                'healthy': round(float(probabilities[0]), 4),
-                'at_risk': round(float(probabilities[1]), 4),
-                'underweight': round(float(probabilities[2]), 4)
+                'healthy': prob_healthy,
+                'at_risk': prob_at_risk,
+                'underweight': prob_underweight
             },
+            'pediatric_screening': {
+                'bmi': bmi,
+                'category': pediatric_risk,
+                'label': pediatric_label,
+                'z_score_range': z_range,
+                'standard': 'WHO Growth Reference (5-19 years)',
+                'screening_disclaimer': 'Pediatric anthropometric screening indicator only — not a definitive medical diagnosis.'
+            },
+            'nutrition_summary': {
+                'school_meal_calories_target': school_meal_calories_target,
+                'school_meal_protein_target': school_meal_protein_target,
+                'actual_school_calories_served': actual_school_calories_served,
+                'actual_school_protein_served': actual_school_protein_served,
+                'school_meal_calorie_fulfillment_pct': round(sm_cal_fulfil_pct, 1),
+                'school_meal_protein_fulfillment_pct': round(sm_prot_fulfil_pct, 1),
+                'school_meal_calorie_gap_kcal': school_meal_gap_kcal,
+                'school_meal_protein_gap_g': school_meal_gap_protein,
+                'full_day_calories_required': full_day_calories_required,
+                'full_day_protein_required': full_day_protein_required,
+                'remaining_daily_deficit_kcal': remaining_daily_deficit,
+                'seven_day_avg_daily_calories': seven_day_avg_daily_calories,
+                'seven_day_avg_daily_protein': seven_day_avg_daily_protein,
+                'recorded_school_days_count': recorded_school_days_count
+            },
+            'contributing_factors': contributing_factors,
+            'reason': reason,
+            'diet_plan': diet_plan,
             'analysis': {
                 'bmi': bmi,
-                'calorie_ratio': round(calorie_ratio, 3),
-                'deficit_kcal': round(deficit, 0),
+                'bmi_status': pediatric_label,
+                'z_score_range': z_range,
+                'school_meal_energy_fulfillment_pct': round(sm_cal_fulfil_pct, 1),
+                'school_meal_calories_target': school_meal_calories_target,
+                'full_day_calories_required': full_day_calories_required,
                 'age': age,
                 'gender': 'Female' if gender == 0 else 'Male'
             },
-            'reason': reason,
-            'diet_plan': diet_plan,
-            'timestamp': datetime.now().isoformat(),
-            'model_version': '2.0.0'
+            'model_metadata': {
+                'model_name': 'RandomForestClassifier',
+                'model_version': '3.0.0',
+                'inference_engine': 'scikit-learn',
+                'pipeline_status': 'restored_active_inference',
+                'training_dataset_type': 'synthetic_pediatric_reference',
+                'validation_status': 'experimental_software_prototype',
+                'screening_disclaimer': 'AI-assisted screening — not a medical diagnosis. For Mid-Day Meal monitoring assistance only.'
+            },
+            'timestamp': datetime.now().isoformat()
         }
-        
+
         return jsonify(response), 200
-    
+
     except Exception as e:
         return jsonify({
+            'success': False,
             'error': 'Prediction failed',
             'message': str(e),
             'status_code': 500
@@ -561,24 +791,23 @@ def analyze_student():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'Invalid request'}), 400
+            return jsonify({'success': False, 'error': 'Invalid request'}), 400
         
         # Map to predict endpoint format
-        mapped_data = {
-            'age': data.get('age', 12),
-            'gender': data.get('gender', 0),
-            'height': data.get('height_cm', 150),
-            'weight': data.get('weight_kg', 45),
-            'avg_weekly_calories': data.get('avg_weekly_calories', 1600),
-            'preference': data.get('preference', 'veg')
-        }
+        mapped_data = dict(data)
+        if 'height_cm' in mapped_data and 'height' not in mapped_data:
+            mapped_data['height'] = mapped_data['height_cm']
+        if 'weight_kg' in mapped_data and 'weight' not in mapped_data:
+            mapped_data['weight'] = mapped_data['weight_kg']
+        if 'calories' in mapped_data and 'avg_weekly_calories' not in mapped_data:
+            mapped_data['avg_weekly_calories'] = mapped_data['calories']
         
         # Call predict with mapped data
         with app.test_request_context(json=mapped_data, method='POST'):
             return predict_malnutrition()
     
     except Exception as e:
-        return jsonify({'error': 'Analysis failed', 'message': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Analysis failed', 'message': str(e)}), 500
 
 
 @app.route('/batch-predict', methods=['POST'])

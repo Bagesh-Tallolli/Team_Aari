@@ -3,6 +3,11 @@ import env from '../config/env.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { HTTP_STATUS } from '../utils/httpStatus.js';
 import logger from '../utils/logger.js';
+import {
+  assessPediatricBmi,
+  getSchoolMealTarget,
+  getFullDayRequirement,
+} from '../config/nutritionStandards.js';
 
 /**
  * AI Service Integration
@@ -19,23 +24,33 @@ import logger from '../utils/logger.js';
  * @param {number} protein - Daily protein intake
  * @returns {Promise<object>} { status, confidence, probabilities }
  */
-export const predictMalnutritionStatus = async (age, bmi, calories, protein) => {
+export const predictMalnutritionStatus = async (age, bmi, calories, protein, extraParams = {}) => {
   try {
     // Validate inputs
-    if (!age || !bmi || calories === undefined || protein === undefined) {
-      throw new AppError('Missing required parameters: age, bmi, calories, protein', HTTP_STATUS.BAD_REQUEST);
+    if (!age || !bmi) {
+      throw new AppError('Missing required parameters: age and bmi', HTTP_STATUS.BAD_REQUEST);
     }
+
+    const height_cm = extraParams.height || extraParams.height_cm || 135;
+    const height_m = height_cm / 100;
+    const weight_kg = extraParams.weight || extraParams.weight_kg || parseFloat((bmi * height_m * height_m).toFixed(1));
 
     const payload = {
       age: parseFloat(age),
+      gender: extraParams.gender ?? 1,
+      height: height_cm,
+      weight: weight_kg,
       bmi: parseFloat(bmi),
-      calories: parseFloat(calories),
-      protein: parseFloat(protein),
+      actual_school_calories_served: parseFloat(calories || 0),
+      actual_school_protein_served: parseFloat(protein || 0),
+      avg_weekly_calories: parseFloat(calories || 0),
+      ...extraParams,
     };
 
-    logger.debug(`📤 Calling AI predict endpoint: ${env.AI_SERVICE_URL}`, { payload });
+    const targetUrl = `${(env.AI_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/analyze\/?$/, '').replace(/\/predict\/?$/, '')}/predict`;
+    logger.debug(`📤 Calling AI predict endpoint: ${targetUrl}`, { payload });
 
-    const response = await axios.post(env.AI_SERVICE_URL, payload, {
+    const response = await axios.post(targetUrl, payload, {
       timeout: 5000,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -48,9 +63,12 @@ export const predictMalnutritionStatus = async (age, bmi, calories, protein) => 
 
     return {
       status: response.data.status,
-      confidence: response.data.confidence || 0,
+      confidence: response.data.confidence ?? null,
       probabilities: response.data.probabilities || {},
+      pediatric_screening: response.data.pediatric_screening || null,
+      contributing_factors: response.data.contributing_factors || [],
       riskLevel: response.data.status === 'Healthy' ? 'low' : (response.data.status === 'At Risk' ? 'medium' : 'high'),
+      model_metadata: response.data.model_metadata || {},
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -114,12 +132,19 @@ export const analyzeNutrition = async (data) => {
     const heightInMeters = student.height / 100;
     const bmi = student.weight / (heightInMeters * heightInMeters);
 
-    // Get AI prediction
+    // Get AI prediction with full student context
     const prediction = await predictMalnutritionStatus(
       student.age,
       parseFloat(bmi.toFixed(2)),
       totalCalories,
-      totalProtein
+      totalProtein,
+      {
+        gender: student.gender === 'Female' ? 0 : 1,
+        height_cm: parseFloat(student.height),
+        weight_kg: parseFloat(student.weight),
+        height: parseFloat(student.height),
+        weight: parseFloat(student.weight),
+      }
     );
 
     return {
@@ -127,8 +152,13 @@ export const analyzeNutrition = async (data) => {
       status: prediction.status,
       riskLevel: prediction.riskLevel,
       confidence: prediction.confidence,
-      recommendations: `AI Prediction: ${prediction.status} (Confidence: ${(prediction.confidence * 100).toFixed(0)}%)`,
+      pediatric_screening: prediction.pediatric_screening,
+      contributing_factors: prediction.contributing_factors || [],
+      recommendations: prediction.confidence
+        ? `AI Screening: ${prediction.status} (Model confidence: ${(prediction.confidence * 100).toFixed(1)}%)`
+        : `AI Screening: ${prediction.status}`,
       analysis: prediction.probabilities,
+      model_metadata: prediction.model_metadata || {},
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -147,45 +177,45 @@ export const analyzeNutrition = async (data) => {
  */
 export const mockAnalyzeNutrition = async (student, foodLogs) => {
   // Calculate BMI: weight (kg) / (height in m)^2
-  const heightInMeters = student.height / 100;
-  const bmi = student.weight / (heightInMeters * heightInMeters);
+  const heightInMeters = (student.height || 120) / 100;
+  const bmi = parseFloat((student.weight / (heightInMeters * heightInMeters)).toFixed(2));
 
-  // Determine BMI status
-  let status = 'normal';
-  let risk = 'healthy';
+  // Determine pediatric BMI status using WHO references (screening indicator)
+  const pediatric = assessPediatricBmi(student.age, student.gender, bmi);
+  const schoolMealTarget = getSchoolMealTarget(student.age);
+  const fullDayReq = getFullDayRequirement(student.age, student.gender);
 
-  if (bmi < 18.5) {
-    status = 'underweight';
-    risk = 'at_risk';
-  } else if (bmi < 24.9) {
-    status = 'normal';
-    risk = 'healthy';
-  } else if (bmi < 29.9) {
-    status = 'overweight';
-    risk = 'at_risk';
-  } else {
-    status = 'obese';
-    risk = 'critical';
-  }
+  const status = pediatric.category === 'normal' ? 'Healthy' : (pediatric.category === 'severe_thinness' ? 'Underweight' : 'At Risk');
+  const risk = pediatric.riskLevel;
 
-  // Calculate total calories from food logs
-  const totalCalories = foodLogs.reduce((sum, log) => sum + (log.estimated_calories || 0), 0);
+  // Calculate total calories recorded from school food logs today
+  const totalCalories = foodLogs.reduce((sum, log) => sum + (parseFloat(log.estimated_calories) || 0), 0);
+  const schoolMealGap = Math.max(0, schoolMealTarget.calories - totalCalories);
 
   let recommendations = '';
-  if (totalCalories > 2500) {
-    recommendations = 'Reduce caloric intake. Your consumption is above recommended levels.';
-  } else if (totalCalories < 1500) {
-    recommendations = 'Increase food intake. You are under the recommended calorie range.';
+  if (totalCalories >= schoolMealTarget.calories) {
+    recommendations = `PM POSHAN school meal calorie target (${schoolMealTarget.calories} kcal) achieved.`;
   } else {
-    recommendations = 'Your nutrition intake is balanced. Continue with current diet habits.';
+    recommendations = `School meal gap: ${schoolMealGap} kcal remaining against PM POSHAN target (${schoolMealTarget.calories} kcal). Full day requirement: ${fullDayReq.calories} kcal.`;
   }
 
   return {
-    bmi: parseFloat(bmi.toFixed(2)),
+    bmi,
+    pediatric_screening: pediatric,
+    school_meal_calories_target: schoolMealTarget.calories,
+    full_day_calories_required: fullDayReq.calories,
+    actual_school_calories_served: totalCalories,
+    school_meal_calorie_gap: schoolMealGap,
     status,
-    risk,
+    riskLevel: risk,
+    confidence: null,
+    model_metadata: {
+      model_name: 'DeterministicPediatricFallback',
+      validation_status: 'rule_based_screening_indicator',
+      disclaimer: 'AI service unavailable; assistive rule-based screening indicator only — not a clinical diagnosis.',
+    },
     recommendations,
-    analysis: `BMI calculated as ${bmi.toFixed(2)} (${status}). Daily intake: ${totalCalories} kcal.`,
+    analysis: `Pediatric Screening: BMI ${bmi} (${pediatric.label}, WHO 5-19 reference). School meal intake: ${totalCalories} kcal.`,
   };
 };
 

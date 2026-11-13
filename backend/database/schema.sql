@@ -43,10 +43,27 @@ CREATE TABLE students (
   height DECIMAL(5, 2) NOT NULL,
   weight DECIMAL(5, 2) NOT NULL,
   current_bmi DECIMAL(5, 2),
+  food_preference VARCHAR(50) DEFAULT 'Vegetarian',
   rfid_card_id VARCHAR(100) UNIQUE,
   risk_level VARCHAR(50) DEFAULT 'healthy',
   last_meal_time TIMESTAMP,
   avatar VARCHAR(255),
+  admission_number VARCHAR(100),
+  dob DATE,
+  class_grade VARCHAR(50),
+  section VARCHAR(20),
+  academic_year VARCHAR(50),
+  school_name VARCHAR(150),
+  parent_name VARCHAR(150),
+  parent_email VARCHAR(150),
+  parent_phone VARCHAR(50),
+  parent_email_verified BOOLEAN DEFAULT false,
+  parent_report_consent BOOLEAN DEFAULT false,
+  consent_recorded_at TIMESTAMP,
+  consent_recorded_by VARCHAR(100),
+  consent_source VARCHAR(100),
+  consent_withdrawn_at TIMESTAMP,
+  auto_weekly_report_enabled BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -92,6 +109,11 @@ CREATE TABLE diet_plan_items (
 
 CREATE INDEX idx_diet_plan_items_student_id ON diet_plan_items(student_id);
 CREATE INDEX idx_diet_plan_items_meal_type ON diet_plan_items(student_id, meal_type);
+
+-- Compatibility view for legacy queries targeting diet_plan
+CREATE OR REPLACE VIEW diet_plan AS 
+  SELECT id, student_id, meal_type, food_item, required_grams 
+  FROM diet_plan_items;
 
 -- ============================================================
 -- 5. FOOD_LOGS TABLE (log of food servings)
@@ -154,3 +176,96 @@ CREATE TABLE alerts (
 CREATE INDEX idx_alerts_student_id ON alerts(student_id);
 CREATE INDEX idx_alerts_resolved ON alerts(resolved);
 CREATE INDEX idx_alerts_created_at ON alerts(created_at);
+
+-- ============================================================
+-- 8. WEEKLY_NUTRITION_REPORTS TABLE (Phase 6 AI weekly analysis)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS weekly_nutrition_reports (
+  id SERIAL PRIMARY KEY,
+  student_id INTEGER NOT NULL,
+  report_period_start DATE NOT NULL,
+  report_period_end DATE NOT NULL,
+  report_data JSONB NOT NULL,
+  recorded_days_count INTEGER DEFAULT 0,
+  avg_daily_calories DECIMAL(6, 2) DEFAULT 0,
+  avg_daily_protein DECIMAL(6, 2) DEFAULT 0,
+  target_fulfillment_pct INTEGER DEFAULT 0,
+  risk_category VARCHAR(100) DEFAULT 'Normal monitoring',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_reports_student ON weekly_nutrition_reports(student_id);
+CREATE INDEX IF NOT EXISTS idx_weekly_reports_period ON weekly_nutrition_reports(student_id, report_period_end);
+
+-- ============================================================
+-- 9. PARENT_REPORT_DELIVERIES TABLE (Phase 7 Parent Reports & Delivery)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS parent_report_deliveries (
+  id SERIAL PRIMARY KEY,
+  student_id INTEGER NOT NULL,
+  weekly_report_id INTEGER,
+  parent_email VARCHAR(150) NOT NULL,
+  delivery_status VARCHAR(50) NOT NULL DEFAULT 'Queued',
+  provider_message_id VARCHAR(255),
+  attempt_count INTEGER DEFAULT 1,
+  last_attempt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  sent_at TIMESTAMP,
+  failure_reason TEXT,
+  email_subject VARCHAR(255),
+  pdf_path VARCHAR(255),
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (weekly_report_id) REFERENCES weekly_nutrition_reports(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_parent_deliveries_student ON parent_report_deliveries(student_id);
+CREATE INDEX IF NOT EXISTS idx_parent_deliveries_weekly_report ON parent_report_deliveries(weekly_report_id);
+CREATE INDEX IF NOT EXISTS idx_parent_deliveries_status ON parent_report_deliveries(delivery_status);
+
+-- Concurrency safe unique index: only 1 active queued/sent delivery per student & report period unless force_resend is set
+CREATE UNIQUE INDEX IF NOT EXISTS uq_parent_delivery_active_dispatch
+ON parent_report_deliveries (student_id, weekly_report_id)
+WHERE delivery_status IN ('Sent', 'Queued') 
+  AND (metadata->>'force_resend' IS NULL OR metadata->>'force_resend' = 'false');
+
+-- ============================================================
+-- 10. PARENT_EMAIL_VERIFICATION_TOKENS TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS parent_email_verification_tokens (
+  id SERIAL PRIMARY KEY,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  parent_email VARCHAR(150) NOT NULL,
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  otp_code_hash VARCHAR(64) NOT NULL,
+  failed_attempts INTEGER DEFAULT 0,
+  expires_at TIMESTAMP NOT NULL,
+  used_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_parent_tokens_student ON parent_email_verification_tokens(student_id);
+CREATE INDEX IF NOT EXISTS idx_parent_tokens_hash ON parent_email_verification_tokens(token_hash);
+
+-- ============================================================
+-- 11. PARENT_CONSENT_HISTORY TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS parent_consent_history (
+  id SERIAL PRIMARY KEY,
+  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  consent_status BOOLEAN NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  recorded_by_user_id INTEGER,
+  recorded_by_name VARCHAR(100),
+  source_method VARCHAR(100) NOT NULL,
+  notes TEXT,
+  timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_parent_consent_student ON parent_consent_history(student_id);
+
+
+

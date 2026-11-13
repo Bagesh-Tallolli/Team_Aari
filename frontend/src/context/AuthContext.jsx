@@ -77,18 +77,26 @@ export function AuthProvider({ children }) {
 
   // Initialize auth from localStorage
   useEffect(() => {
-    const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
-    const user = localStorage.getItem(STORAGE_KEYS.AUTH_USER);
+    try {
+      const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+      const rawUser = localStorage.getItem(STORAGE_KEYS.AUTH_USER);
 
-    if (token && user) {
-      dispatch({
-        type: 'RESTORE_TOKEN',
-        payload: {
-          token,
-          user: JSON.parse(user),
-        },
-      });
-    } else {
+      if (token && rawUser && rawUser !== 'undefined' && rawUser !== 'null') {
+        const parsedUser = JSON.parse(rawUser);
+        dispatch({
+          type: 'RESTORE_TOKEN',
+          payload: {
+            token,
+            user: parsedUser,
+          },
+        });
+      } else {
+        dispatch({ type: 'INIT_COMPLETE' });
+      }
+    } catch (err) {
+      console.warn('Failed to parse cached auth session, clearing:', err);
+      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
       dispatch({ type: 'INIT_COMPLETE' });
     }
   }, []);
@@ -156,12 +164,16 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const signup = useCallback(async (email, password, name, role = 'staff') => {
+  const signup = useCallback(async (email, password, name, role = 'staff', phone = null, school_name = null) => {
     dispatch({ type: 'LOGIN_START' });
 
     try {
       // Call the backend API
-      const result = await apiService.auth.signup(email, password, name, role);
+      const result = await apiService.auth.signup(
+        typeof email === 'object'
+          ? email
+          : { email, password, name, role, phone, school_name }
+      );
 
       if (!result.success) {
         dispatch({

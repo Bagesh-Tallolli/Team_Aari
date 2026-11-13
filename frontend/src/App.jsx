@@ -18,16 +18,20 @@ import StudentProfilePage from './features/students/pages/StudentProfilePage.jsx
 import StudentNutritionTracker from './features/students/pages/StudentNutritionTracker.jsx';
 import AlertsPage from './features/alerts/pages/AlertsPage.jsx';
 import AnalyticsPage from './features/analytics/pages/AnalyticsPage.jsx';
+import HowItWorksPage from './features/info/pages/HowItWorksPage.jsx';
+import GovernmentSchemesPage from './features/schemes/pages/GovernmentSchemesPage.jsx';
 
 // Components
 import ProtectedRoute from './components/common/ProtectedRoute.jsx';
+import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 
 function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <AppProvider>
-          <Router>
+    <ErrorBoundary>
+      <AuthProvider>
+        <NotificationProvider>
+          <AppProvider>
+            <Router>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
@@ -104,6 +108,24 @@ function App() {
                 }
               />
 
+              <Route
+                path="/government-schemes"
+                element={
+                  <ProtectedRoute>
+                    <GovernmentSchemesPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/how-it-works"
+                element={
+                  <ProtectedRoute>
+                    <HowItWorksPage />
+                  </ProtectedRoute>
+                }
+              />
+
               <Route path="*" element={<div>404 - Not Found</div>} />
             </Routes>
 
@@ -126,7 +148,8 @@ function App() {
         </AppProvider>
       </NotificationProvider>
     </AuthProvider>
-  );
+  </ErrorBoundary>
+);
 }
 
 export default App;

@@ -48,14 +48,14 @@ export const getAllAlerts = async (filters = {}) => {
     let params = [];
 
     // Filter by risk level
-    if (risk_level) {
-      whereConditions.push(`risk_level = $${params.length + 1}`);
+    if (risk_level && risk_level !== 'all') {
+      whereConditions.push(`a.risk_level = $${params.length + 1}`);
       params.push(risk_level);
     }
 
     // Filter by resolution status
-    if (resolved !== null) {
-      whereConditions.push(`resolved = $${params.length + 1}`);
+    if (resolved !== null && resolved !== undefined) {
+      whereConditions.push(`a.resolved = $${params.length + 1}`);
       params.push(resolved);
     }
 
@@ -63,7 +63,7 @@ export const getAllAlerts = async (filters = {}) => {
 
     // Get total count
     const countResult = await query(
-      `SELECT COUNT(*) as total FROM alerts ${whereClause}`,
+      `SELECT COUNT(*) as total FROM alerts a ${whereClause}`,
       params
     );
     const total = parseInt(countResult.rows[0].total, 10);
@@ -73,8 +73,16 @@ export const getAllAlerts = async (filters = {}) => {
     const countParams = [...params, limit, offset];
 
     const result = await query(
-      `SELECT * FROM alerts ${whereClause}
-       ORDER BY created_at DESC
+      `SELECT a.*, 
+              s.name as student_name, 
+              s.current_bmi, 
+              s.age, 
+              s.gender, 
+              s.rfid_card_id
+       FROM alerts a
+       LEFT JOIN students s ON a.student_id = s.id
+       ${whereClause}
+       ORDER BY a.created_at DESC
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       countParams
     );

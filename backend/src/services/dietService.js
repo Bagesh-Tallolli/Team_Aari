@@ -45,14 +45,17 @@ export const upsertDietPlan = async (studentId, status) => {
 
     logger.debug(`🍱 Upserting diet plan for student ${studentId} with status: ${status}`);
 
-    // Step 1: Delete existing lunch diet plans for this student
-    const deleteQuery = `
-      DELETE FROM diet_plan 
-      WHERE student_id = $1 
-      AND meal_type = 'lunch'
-    `;
-
-    await db.query(deleteQuery, [studentId]);
+    // Step 1: Delete existing lunch diet plans for this student across both tables
+    try {
+      await db.query(`DELETE FROM diet_plan_items WHERE student_id = $1 AND meal_type = 'lunch'`, [studentId]);
+    } catch {
+      // Table may not exist yet
+    }
+    try {
+      await db.query(`DELETE FROM diet_plan WHERE student_id = $1 AND meal_type = 'lunch'`, [studentId]);
+    } catch {
+      // Table may not exist yet
+    }
     logger.debug(`🗑️  Deleted existing lunch diet plans for student ${studentId}`);
 
     // Step 2: Insert new diet plan rows based on status
@@ -60,21 +63,38 @@ export const upsertDietPlan = async (studentId, status) => {
     const createdPlans = [];
 
     for (const item of template) {
-      const insertQuery = `
-        INSERT INTO diet_plan (student_id, meal_type, food_item, required_grams)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, student_id, meal_type, food_item, required_grams
-      `;
+      let createdRow = null;
 
-      const result = await db.query(insertQuery, [
-        studentId,
-        'lunch',
-        item.food_item,
-        item.required_grams,
-      ]);
+      try {
+        const result = await db.query(
+          `INSERT INTO diet_plan_items (student_id, meal_type, food_item, required_grams, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           RETURNING id, student_id, meal_type, food_item, required_grams`,
+          [studentId, 'lunch', item.food_item, item.required_grams]
+        );
+        if (result.rows && result.rows.length > 0) {
+          createdRow = result.rows[0];
+        }
+      } catch {
+        // Fallback to diet_plan
+      }
 
-      if (result.rows && result.rows.length > 0) {
-        createdPlans.push(result.rows[0]);
+      try {
+        const legResult = await db.query(
+          `INSERT INTO diet_plan (student_id, meal_type, food_item, required_grams)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, student_id, meal_type, food_item, required_grams`,
+          [studentId, 'lunch', item.food_item, item.required_grams]
+        );
+        if (!createdRow && legResult.rows && legResult.rows.length > 0) {
+          createdRow = legResult.rows[0];
+        }
+      } catch {
+        // Ignore mirror error
+      }
+
+      if (createdRow) {
+        createdPlans.push(createdRow);
         logger.debug(`✅ Created diet plan: ${item.food_item} ${item.required_grams}g for student ${studentId}`);
       }
     }
@@ -96,22 +116,49 @@ export const upsertDietPlan = async (studentId, status) => {
  */
 export const getDietPlanByStudent = async (studentId, mealType = null) => {
   try {
-    let query = `
-      SELECT id, student_id, meal_type, food_item, required_grams
-      FROM diet_plan
-      WHERE student_id = $1
-    `;
-    const params = [studentId];
+    let rows = [];
 
-    if (mealType) {
-      query += ` AND meal_type = $2`;
-      params.push(mealType);
+    // Try diet_plan_items first
+    try {
+      let query = `
+        SELECT id, student_id, meal_type, food_item, required_grams
+        FROM diet_plan_items
+        WHERE student_id = $1
+      `;
+      const params = [studentId];
+      if (mealType) {
+        query += ` AND meal_type = $2`;
+        params.push(mealType);
+      }
+      query += ` ORDER BY meal_type, food_item`;
+      const result = await db.query(query, params);
+      rows = result.rows || [];
+    } catch {
+      // Table may not exist yet
     }
 
-    query += ` ORDER BY meal_type, food_item`;
+    if (rows.length === 0) {
+      // Fallback to legacy diet_plan
+      try {
+        let query = `
+          SELECT id, student_id, meal_type, food_item, required_grams
+          FROM diet_plan
+          WHERE student_id = $1
+        `;
+        const params = [studentId];
+        if (mealType) {
+          query += ` AND meal_type = $2`;
+          params.push(mealType);
+        }
+        query += ` ORDER BY meal_type, food_item`;
+        const result = await db.query(query, params);
+        rows = result.rows || [];
+      } catch {
+        // Table may not exist
+      }
+    }
 
-    const result = await db.query(query, params);
-    return result.rows || [];
+    return rows;
   } catch (error) {
     logger.error('❌ Failed to fetch diet plan', { studentId, mealType, error: error.message });
     throw new AppError('Failed to fetch diet plan', HTTP_STATUS.INTERNAL_ERROR);

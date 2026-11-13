@@ -7,6 +7,8 @@ export const MENU_ITEMS = [
   { id: 'nutritionTracker', label: 'Nutrition Tracker', icon: 'Activity', path: '/students/nutrition-tracker' },
   { id: 'alerts', label: 'Alerts', icon: 'AlertCircle', path: '/alerts' },
   { id: 'analytics', label: 'Analytics', icon: 'BarChart3', path: '/analytics' },
+  { id: 'schemes', label: 'Govt. Schemes', icon: 'Landmark', path: '/government-schemes' },
+  { id: 'howItWorks', label: 'How It Works', icon: 'Info', path: '/how-it-works' },
 ];
 
 export const RISK_LEVELS = {
@@ -21,25 +23,49 @@ export const RISK_COLORS = {
   critical: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/50' },
 };
 
+export const PM_POSHAN_TARGETS = {
+  primary: { calories: 450, protein: 12, label: 'Primary (Class 1-5, Age <= 10)' },
+  upperPrimary: { calories: 700, protein: 20, label: 'Upper Primary (Class 6-8, Age > 10)' },
+};
+
+export const ICMR_DAILY_TARGETS = {
+  primary: { calories: 1500, protein: 18, label: 'Daily Requirement (Age 6-9)' },
+  upperPrimary: { calories: 2200, protein: 32, label: 'Daily Requirement (Age 10-14)' },
+};
+
 export const BMI_CATEGORIES = {
-  UNDERWEIGHT: 'underweight',
+  SEVERE_THINNESS: 'severe_thinness',
+  THINNESS: 'thinness',
   NORMAL: 'normal',
   OVERWEIGHT: 'overweight',
   OBESE: 'obese',
 };
 
+// Pediatric Growth Reference Note
+export const PEDIATRIC_SCREENING_INFO = {
+  source: 'WHO Growth Reference (5-19 Years) & PM POSHAN 2021 Norms',
+  disclaimer: 'Screening indicator only. Not a medical diagnosis. Evaluated using age- and sex-specific growth standards.',
+};
+
 export const BMI_RANGES = {
-  underweight: { min: 0, max: 18.5, label: 'Underweight', color: 'blue' },
-  normal: { min: 18.5, max: 24.9, label: 'Normal weight', color: 'green' },
-  overweight: { min: 25, max: 29.9, label: 'Overweight', color: 'yellow' },
-  obese: { min: 30, max: 999, label: 'Obese', color: 'red' },
+  thinness: { min: 0, max: 15.0, label: 'Thinness / Underweight', color: 'blue' },
+  normal: { min: 15.0, max: 20.0, label: 'Healthy Weight for Age', color: 'green' },
+  overweight: { min: 20.0, max: 24.0, label: 'Overweight for Age', color: 'yellow' },
+  obese: { min: 24.0, max: 999, label: 'Obese for Age', color: 'red' },
+  // Backward compatibility alias
+  underweight: { min: 0, max: 15.0, label: 'Thinness / Underweight', color: 'blue' },
 };
 
 export const NUTRITION_TARGETS = {
-  protein: { daily: 50, unit: 'g' },
-  calories: { daily: 2000, unit: 'kcal' },
-  carbs: { daily: 300, unit: 'g' },
-  fats: { daily: 65, unit: 'g' },
+  school_meal_primary: { calories: 450, protein: 12, unit: 'kcal' },
+  school_meal_upper_primary: { calories: 700, protein: 20, unit: 'kcal' },
+  daily_estimated_primary: { calories: 1500, protein: 18, unit: 'kcal' },
+  daily_estimated_upper_primary: { calories: 2200, protein: 32, unit: 'kcal' },
+  // Legacy aliases
+  protein: { daily: 12, unit: 'g' },
+  calories: { daily: 450, unit: 'kcal' },
+  carbs: { daily: 70, unit: 'g' },
+  fats: { daily: 10, unit: 'g' },
 };
 
 export const ALERT_TYPES = {

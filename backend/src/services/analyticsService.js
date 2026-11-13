@@ -6,15 +6,18 @@ import logger from '../utils/logger.js';
 /**
  * Analytics Service
  * Calculates nutrition and health metrics from food logs
- * Generates data for AI model predictions
+ * 
+ * CORE CORRECTION (Phase 1):
+ * - Groups food records by (student_id, date) so multi-item meals on the same day are summed first.
+ * - Averages daily totals across recorded days, without treating unrecorded days as 0 calories.
  */
 
 /**
- * Get weekly average calorie intake for a student
- * Calculates average calories from food logs over last 7 days
+ * Get weekly average daily calorie intake for a student
+ * Sums all meals on each date, then averages the daily totals over recorded days in the last 7 days.
  * 
  * @param {number} studentId - Student ID
- * @returns {Promise<number>} Average weekly calories (0 if no data)
+ * @returns {Promise<number>} Average daily calories recorded (0 if no logs in window)
  */
 export const getWeeklyAverage = async (studentId) => {
   try {
@@ -22,25 +25,33 @@ export const getWeeklyAverage = async (studentId) => {
       throw new AppError('Student ID is required', HTTP_STATUS.BAD_REQUEST);
     }
 
-    logger.debug(`📊 Calculating weekly average for student: ${studentId}`);
+    logger.debug(`📊 Calculating daily-aggregated weekly average for student: ${studentId}`);
 
-    // Query: Get average calories from last 7 days
     const result = await query(
-      `SELECT AVG(estimated_calories) AS avg_calories
-       FROM food_logs
-       WHERE student_id = $1
-       AND logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'`,
+      `WITH daily_intake AS (
+         SELECT 
+           DATE(logged_at) AS log_date,
+           SUM(estimated_calories) AS daily_calories
+         FROM food_logs
+         WHERE student_id = $1
+           AND logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+         GROUP BY DATE(logged_at)
+       )
+       SELECT 
+         COALESCE(AVG(daily_calories), 0) AS avg_daily_calories,
+         COUNT(*) AS recorded_days_count,
+         COALESCE(SUM(daily_calories), 0) AS total_period_calories
+       FROM daily_intake`,
       [studentId]
     );
 
-    // Extract average or default to 0
-    const avgCalories = result.rows.length > 0 && result.rows[0].avg_calories 
-      ? parseFloat(result.rows[0].avg_calories).toFixed(2) 
+    const avgDailyCalories = result.rows.length > 0 && result.rows[0].avg_daily_calories
+      ? parseFloat(parseFloat(result.rows[0].avg_daily_calories).toFixed(2))
       : 0;
 
-    logger.debug(`✅ Weekly average calculated: ${avgCalories} kcal`);
+    logger.debug(`✅ Weekly daily-average calculated: ${avgDailyCalories} kcal/day (${result.rows[0]?.recorded_days_count || 0} active days)`);
 
-    return parseFloat(avgCalories);
+    return avgDailyCalories;
   } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error(`❌ Weekly average calculation failed: ${error.message}`);
@@ -49,7 +60,64 @@ export const getWeeklyAverage = async (studentId) => {
 };
 
 /**
- * Get total calories for today
+ * Get detailed 7-day intake metrics including protein and active recorded days
+ * @param {number} studentId - Student ID
+ * @returns {Promise<object>}
+ */
+export const getWeeklyIntakeDetails = async (studentId) => {
+  try {
+    if (!studentId) {
+      throw new AppError('Student ID is required', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    const result = await query(
+      `WITH daily_intake AS (
+         SELECT 
+           DATE(logged_at) AS log_date,
+           SUM(estimated_calories) AS daily_calories,
+           SUM(protein) AS daily_protein,
+           SUM(carbs) AS daily_carbs,
+           SUM(fats) AS daily_fats,
+           COUNT(*) AS daily_item_count
+         FROM food_logs
+         WHERE student_id = $1
+           AND logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+         GROUP BY DATE(logged_at)
+       )
+       SELECT 
+         COALESCE(AVG(daily_calories), 0) AS avg_daily_calories,
+         COALESCE(AVG(daily_protein), 0) AS avg_daily_protein,
+         COALESCE(AVG(daily_carbs), 0) AS avg_daily_carbs,
+         COALESCE(AVG(daily_fats), 0) AS avg_daily_fats,
+         COUNT(*) AS recorded_days_count,
+         COALESCE(SUM(daily_calories), 0) AS total_period_calories,
+         COALESCE(SUM(daily_protein), 0) AS total_period_protein,
+         COALESCE(SUM(daily_item_count), 0) AS total_items_served
+       FROM daily_intake`,
+      [studentId]
+    );
+
+    const row = result.rows[0] || {};
+    return {
+      avg_daily_calories: parseFloat(parseFloat(row.avg_daily_calories || 0).toFixed(2)),
+      avg_daily_protein: parseFloat(parseFloat(row.avg_daily_protein || 0).toFixed(2)),
+      avg_daily_carbs: parseFloat(parseFloat(row.avg_daily_carbs || 0).toFixed(2)),
+      avg_daily_fats: parseFloat(parseFloat(row.avg_daily_fats || 0).toFixed(2)),
+      recorded_days_count: parseInt(row.recorded_days_count || 0, 10),
+      total_period_calories: parseFloat(parseFloat(row.total_period_calories || 0).toFixed(2)),
+      total_period_protein: parseFloat(parseFloat(row.total_period_protein || 0).toFixed(2)),
+      total_items_served: parseInt(row.total_items_served || 0, 10),
+      window_days: 7,
+    };
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    logger.error(`❌ Weekly intake details calculation failed: ${error.message}`);
+    throw new AppError('Failed to calculate weekly intake details', HTTP_STATUS.INTERNAL_ERROR);
+  }
+};
+
+/**
+ * Get total calories recorded today for a student (sums all items served today)
  * @param {number} studentId - Student ID
  * @returns {Promise<number>} Total calories today (0 if no data)
  */
@@ -59,10 +127,10 @@ export const getTodaysTotalCalories = async (studentId) => {
       throw new AppError('Student ID is required', HTTP_STATUS.BAD_REQUEST);
     }
 
-    logger.debug(`📊 Calculating today's total for student: ${studentId}`);
-
     const result = await query(
-      `SELECT SUM(estimated_calories) AS total_calories
+      `SELECT 
+         COALESCE(SUM(estimated_calories), 0) AS total_calories,
+         COALESCE(SUM(protein), 0) AS total_protein
        FROM food_logs
        WHERE student_id = $1
        AND DATE(logged_at) = CURRENT_DATE`,
@@ -70,12 +138,10 @@ export const getTodaysTotalCalories = async (studentId) => {
     );
 
     const totalCalories = result.rows.length > 0 && result.rows[0].total_calories 
-      ? parseFloat(result.rows[0].total_calories).toFixed(2) 
+      ? parseFloat(parseFloat(result.rows[0].total_calories).toFixed(2))
       : 0;
 
-    logger.debug(`✅ Today's total calculated: ${totalCalories} kcal`);
-
-    return parseFloat(totalCalories);
+    return totalCalories;
   } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error(`❌ Today's total calculation failed: ${error.message}`);
@@ -85,10 +151,10 @@ export const getTodaysTotalCalories = async (studentId) => {
 
 /**
  * Get weekly nutrition summary
- * Calculates totals for calories, protein, carbs, fats over last 7 days
+ * Aggregates daily intake across the last 7 days
  * 
  * @param {number} studentId - Student ID
- * @returns {Promise<object>} Weekly nutrition totals
+ * @returns {Promise<object>} Weekly nutrition totals & daily averages
  */
 export const getWeeklySummary = async (studentId) => {
   try {
@@ -96,27 +162,40 @@ export const getWeeklySummary = async (studentId) => {
       throw new AppError('Student ID is required', HTTP_STATUS.BAD_REQUEST);
     }
 
-    logger.debug(`📊 Calculating weekly summary for student: ${studentId}`);
+    logger.debug(`📊 Calculating daily-aggregated weekly summary for student: ${studentId}`);
 
     const result = await query(
-      `SELECT 
-         COUNT(*) as meal_count,
-         SUM(estimated_calories) as total_calories,
-         AVG(estimated_calories) as avg_calories,
-         SUM(protein) as total_protein,
-         AVG(protein) as avg_protein,
-         SUM(carbs) as total_carbs,
-         AVG(carbs) as avg_carbs,
-         SUM(fats) as total_fats,
-         AVG(fats) as avg_fats
-       FROM food_logs
-       WHERE student_id = $1
-       AND logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'`,
+      `WITH daily_summary AS (
+         SELECT 
+           DATE(logged_at) AS log_date,
+           COUNT(*) AS daily_items,
+           SUM(estimated_calories) AS day_cals,
+           SUM(protein) AS day_protein,
+           SUM(carbs) AS day_carbs,
+           SUM(fats) AS day_fats
+         FROM food_logs
+         WHERE student_id = $1
+           AND logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+         GROUP BY DATE(logged_at)
+       )
+       SELECT 
+         COUNT(*) AS active_days,
+         COALESCE(SUM(daily_items), 0) AS meal_count,
+         COALESCE(SUM(day_cals), 0) AS total_calories,
+         COALESCE(AVG(day_cals), 0) AS avg_calories_per_day,
+         COALESCE(SUM(day_protein), 0) AS total_protein,
+         COALESCE(AVG(day_protein), 0) AS avg_protein_per_day,
+         COALESCE(SUM(day_carbs), 0) AS total_carbs,
+         COALESCE(AVG(day_carbs), 0) AS avg_carbs_per_day,
+         COALESCE(SUM(day_fats), 0) AS total_fats,
+         COALESCE(AVG(day_fats), 0) AS avg_fats_per_day
+       FROM daily_summary`,
       [studentId]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows.length === 0 || parseInt(result.rows[0].active_days, 10) === 0) {
       return {
+        active_days: 0,
         meal_count: 0,
         total_calories: 0,
         avg_calories: 0,
@@ -131,15 +210,16 @@ export const getWeeklySummary = async (studentId) => {
 
     const row = result.rows[0];
     return {
+      active_days: parseInt(row.active_days, 10),
       meal_count: parseInt(row.meal_count, 10),
-      total_calories: row.total_calories ? parseFloat(row.total_calories).toFixed(2) : 0,
-      avg_calories: row.avg_calories ? parseFloat(row.avg_calories).toFixed(2) : 0,
-      total_protein: row.total_protein ? parseFloat(row.total_protein).toFixed(2) : 0,
-      avg_protein: row.avg_protein ? parseFloat(row.avg_protein).toFixed(2) : 0,
-      total_carbs: row.total_carbs ? parseFloat(row.total_carbs).toFixed(2) : 0,
-      avg_carbs: row.avg_carbs ? parseFloat(row.avg_carbs).toFixed(2) : 0,
-      total_fats: row.total_fats ? parseFloat(row.total_fats).toFixed(2) : 0,
-      avg_fats: row.avg_fats ? parseFloat(row.avg_fats).toFixed(2) : 0,
+      total_calories: parseFloat(parseFloat(row.total_calories || 0).toFixed(2)),
+      avg_calories: parseFloat(parseFloat(row.avg_calories_per_day || 0).toFixed(2)),
+      total_protein: parseFloat(parseFloat(row.total_protein || 0).toFixed(2)),
+      avg_protein: parseFloat(parseFloat(row.avg_protein_per_day || 0).toFixed(2)),
+      total_carbs: parseFloat(parseFloat(row.total_carbs || 0).toFixed(2)),
+      avg_carbs: parseFloat(parseFloat(row.avg_carbs_per_day || 0).toFixed(2)),
+      total_fats: parseFloat(parseFloat(row.total_fats || 0).toFixed(2)),
+      avg_fats: parseFloat(parseFloat(row.avg_fats_per_day || 0).toFixed(2)),
     };
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -149,34 +229,49 @@ export const getWeeklySummary = async (studentId) => {
 };
 
 /**
- * Get all students with their weekly average calories
- * Used for AI model batch processing
+ * Get all students with their daily-aggregated weekly average calories
  * 
- * @returns {Promise<array>} Array of students with weekly averages
+ * @returns {Promise<array>} Array of students with daily averages
  */
 export const getAllStudentsWeeklyAverages = async () => {
   try {
-    logger.debug(`📊 Calculating weekly averages for all students`);
+    logger.debug(`📊 Calculating weekly daily-averages for all students`);
 
     const result = await query(
-      `SELECT 
+      `WITH daily_logs AS (
+         SELECT 
+           student_id,
+           DATE(logged_at) AS log_date,
+           SUM(estimated_calories) AS day_calories,
+           SUM(protein) AS day_protein,
+           COUNT(*) AS day_items_count
+         FROM food_logs
+         WHERE logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+         GROUP BY student_id, DATE(logged_at)
+       )
+       SELECT 
          s.id,
          s.name,
          s.age,
          s.gender,
          s.current_bmi,
          s.risk_level,
-         COALESCE(AVG(f.estimated_calories), 0) AS avg_weekly_calories,
-         COALESCE(COUNT(f.id), 0) AS meal_count,
-         COALESCE(SUM(f.estimated_calories), 0) AS total_calories
+         COALESCE(COUNT(d.log_date), 0) AS recorded_days,
+         COALESCE(SUM(d.day_items_count), 0) AS meal_count,
+         COALESCE(SUM(d.day_calories), 0) AS total_calories,
+         CASE 
+           WHEN COUNT(d.log_date) > 0 THEN SUM(d.day_calories) / COUNT(d.log_date) 
+           ELSE 0 
+         END AS avg_daily_calories,
+         CASE 
+           WHEN COUNT(d.log_date) > 0 THEN SUM(d.day_protein) / COUNT(d.log_date) 
+           ELSE 0 
+         END AS avg_daily_protein
        FROM students s
-       LEFT JOIN food_logs f ON s.id = f.student_id
-         AND f.logged_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+       LEFT JOIN daily_logs d ON s.id = d.student_id
        GROUP BY s.id, s.name, s.age, s.gender, s.current_bmi, s.risk_level
        ORDER BY s.id`
     );
-
-    logger.debug(`✅ Weekly averages calculated for ${result.rows.length} students`);
 
     return result.rows.map(row => ({
       student_id: row.id,
@@ -185,9 +280,11 @@ export const getAllStudentsWeeklyAverages = async () => {
       gender: row.gender,
       bmi: parseFloat(row.current_bmi) || 0,
       risk_level: row.risk_level,
-      avg_weekly_calories: parseFloat(row.avg_weekly_calories).toFixed(2),
+      recorded_days: parseInt(row.recorded_days, 10),
       meal_count: parseInt(row.meal_count, 10),
-      total_weekly_calories: parseFloat(row.total_calories).toFixed(2),
+      total_weekly_calories: parseFloat(parseFloat(row.total_calories || 0).toFixed(2)),
+      avg_weekly_calories: parseFloat(parseFloat(row.avg_daily_calories || 0).toFixed(2)),
+      avg_weekly_protein: parseFloat(parseFloat(row.avg_daily_protein || 0).toFixed(2)),
     }));
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -197,8 +294,8 @@ export const getAllStudentsWeeklyAverages = async () => {
 };
 
 /**
- * Get nutrition trend for a student over specified days
- * Shows daily totals for trend analysis
+ * Get daily nutrition trend for a student over specified days
+ * Sums all meals served on each calendar date
  * 
  * @param {number} studentId - Student ID
  * @param {number} days - Number of days to analyze (default 7)
@@ -210,33 +307,31 @@ export const getNutritionTrend = async (studentId, days = 7) => {
       throw new AppError('Student ID is required', HTTP_STATUS.BAD_REQUEST);
     }
 
-    logger.debug(`📊 Calculating nutrition trend for student: ${studentId}, days: ${days}`);
+    const safeDays = Math.min(Math.max(parseInt(days, 10) || 7, 1), 90);
 
     const result = await query(
       `SELECT 
          DATE(logged_at) AS date,
-         COUNT(*) as meal_count,
+         COUNT(*) as items_served_count,
          SUM(estimated_calories) as total_calories,
-         AVG(estimated_calories) as avg_calories,
          SUM(protein) as total_protein,
          SUM(carbs) as total_carbs,
          SUM(fats) as total_fats
        FROM food_logs
        WHERE student_id = $1
-       AND logged_at >= CURRENT_TIMESTAMP - INTERVAL '${days} days'
+       AND logged_at >= CURRENT_TIMESTAMP - ($2 || ' days')::INTERVAL
        GROUP BY DATE(logged_at)
        ORDER BY DATE(logged_at) DESC`,
-      [studentId]
+      [studentId, safeDays]
     );
 
     return result.rows.map(row => ({
       date: row.date,
-      meal_count: parseInt(row.meal_count, 10),
-      total_calories: row.total_calories ? parseFloat(row.total_calories).toFixed(2) : 0,
-      avg_calories: row.avg_calories ? parseFloat(row.avg_calories).toFixed(2) : 0,
-      total_protein: row.total_protein ? parseFloat(row.total_protein).toFixed(2) : 0,
-      total_carbs: row.total_carbs ? parseFloat(row.total_carbs).toFixed(2) : 0,
-      total_fats: row.total_fats ? parseFloat(row.total_fats).toFixed(2) : 0,
+      items_served_count: parseInt(row.items_served_count, 10),
+      total_calories: row.total_calories ? parseFloat(parseFloat(row.total_calories).toFixed(2)) : 0,
+      total_protein: row.total_protein ? parseFloat(parseFloat(row.total_protein).toFixed(2)) : 0,
+      total_carbs: row.total_carbs ? parseFloat(parseFloat(row.total_carbs).toFixed(2)) : 0,
+      total_fats: row.total_fats ? parseFloat(parseFloat(row.total_fats).toFixed(2)) : 0,
     }));
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -247,6 +342,7 @@ export const getNutritionTrend = async (studentId, days = 7) => {
 
 export default {
   getWeeklyAverage,
+  getWeeklyIntakeDetails,
   getTodaysTotalCalories,
   getWeeklySummary,
   getAllStudentsWeeklyAverages,

@@ -1,36 +1,40 @@
 /**
- * Serving Rules Service
- * Determines rice/food quantities based on student profile
- * 
- * Rules are based on age, BMI, and nutritional requirements
+ * Serving Rules & Nutrition Allocation Service
+ * Determines planned portions and nutrition benchmarks according to:
+ * 1. PM POSHAN (Mid-Day Meal) Mandated Norms:
+ *    - Primary (Class I-V, age <= 10): 100g grain allocation -> 450 kcal, 12g protein
+ *    - Upper Primary (Class VI-VIII, age > 10): 150g grain allocation -> 700 kcal, 20g protein
+ * 2. ICMR - NIN 2020 RDA for full-day energy and protein requirements
+ * 3. Verified nutrient calculations based strictly on actual measured weight
  */
 
 import { AppError } from '../middlewares/errorHandler.js';
 import { HTTP_STATUS } from '../utils/httpStatus.js';
+import {
+  getSchoolMealTarget,
+  getFullDayRequirement,
+  calculateServedNutrients,
+  VERIFIED_FOOD_COMPOSITION,
+} from '../config/nutritionStandards.js';
 
 /**
- * Get rice serving size in grams based on student age
- * 
- * Rules:
- * - age <= 8 → 100g
- * - age <= 12 → 150g
- * - age > 12 → 150g
- * 
+ * Get grain (rice) portion allocation in grams based on PM POSHAN school grade / age
  * @param {number} age - Student age in years
- * @returns {number} Rice serving in grams
+ * @returns {number} Recommended rice allocation in grams
  */
 export const getRiceGrams = (age) => {
   try {
-    if (!age || age < 0) {
+    const numericAge = Number(age);
+    if (!numericAge || numericAge < 0) {
       throw new AppError('Invalid age provided', HTTP_STATUS.BAD_REQUEST);
     }
 
-    if (age <= 8) {
-      return 100; // Younger children: 100g
-    } else if (age <= 12) {
-      return 150; // Middle age: 150g
+    if (numericAge <= 10) {
+      return 100; // Primary: 100g rice allocation
+    } else if (numericAge <= 14) {
+      return 150; // Upper Primary: 150g rice allocation
     } else {
-      return 150; // Older students: 150g
+      return 150; // Senior / adolescent allocation
     }
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -39,26 +43,24 @@ export const getRiceGrams = (age) => {
 };
 
 /**
- * Get protein side dish serving based on risk level and age
- * 
- * @param {string} riskLevel - Student risk level (healthy, at_risk, critical)
+ * Get planned dal / protein portion based on school category
  * @param {number} age - Student age
- * @returns {number} Protein serving in grams
+ * @returns {number} Dal portion in grams
  */
 export const getProteinGrams = (riskLevel, age) => {
   try {
-    // Base protein requirements
-    let baseProtein = age <= 8 ? 30 : age <= 12 ? 40 : 50;
+    const numericAge = Number(age) || 10;
+    // PM POSHAN standard pulses: 20g raw (~60g cooked) primary, 30g raw (~90g cooked) upper primary
+    const baseGrams = numericAge <= 10 ? 60 : 90;
 
-    // Adjust for risk level
     switch (riskLevel?.toLowerCase()) {
       case 'critical':
-        return baseProtein * 1.5; // Extra protein for malnourished
+        return Math.round(baseGrams * 1.3);
       case 'at_risk':
-        return baseProtein * 1.25; // Moderate increase
+        return Math.round(baseGrams * 1.15);
       case 'healthy':
       default:
-        return baseProtein; // Standard serving
+        return baseGrams;
     }
   } catch (error) {
     throw new AppError('Failed to calculate protein serving', HTTP_STATUS.INTERNAL_ERROR);
@@ -66,32 +68,51 @@ export const getProteinGrams = (riskLevel, age) => {
 };
 
 /**
- * Get vegetables/side dish serving based on age and BMI
- * 
+ * Get planned vegetable portion based on school category
  * @param {number} age - Student age
- * @param {number} bmi - Student BMI
- * @returns {number} Vegetables serving in grams
+ * @returns {number} Vegetable portion in grams
  */
-export const getVegetablesGrams = (age, bmi) => {
+export const getVegetablesGrams = (age) => {
   try {
-    // Standard vegetable serving: 80-100g
-    if (age <= 8) {
-      return 80;
-    } else if (age <= 12) {
-      return 100;
-    } else {
-      return 120; // Slightly more for older students
-    }
+    const numericAge = Number(age) || 10;
+    // PM POSHAN vegetables: 50g primary, 75g upper primary
+    return numericAge <= 10 ? 50 : 75;
   } catch (error) {
     throw new AppError('Failed to calculate vegetable serving', HTTP_STATUS.INTERNAL_ERROR);
   }
 };
 
 /**
- * Get complete meal composition
+ * Calculate nutrients from actual measured grams of a served food item
+ * @param {string} foodItem - Name of item (e.g. 'rice', 'dal', 'vegetables')
+ * @param {number} measuredGrams - Measured weight from hardware scale
+ * @returns {object} Nutrients (calories, protein, carbs, fats)
+ */
+export const calculateMeasuredNutrients = (foodItem, measuredGrams) => {
+  return calculateServedNutrients(foodItem, measuredGrams);
+};
+
+/**
+ * Get nutritional benchmarks for a student
+ * Returns separate full-day requirement and school-meal target
  * 
- * @param {object} student - Student object { age, bmi, risk_level }
- * @returns {object} Complete meal breakdown
+ * @param {object} student - { age, gender }
+ * @returns {object} { school_meal_target, full_day_requirement }
+ */
+export const getStudentNutritionBenchmarks = (student) => {
+  const age = student.age || 10;
+  const gender = student.gender || 'Male';
+
+  return {
+    school_meal_target: getSchoolMealTarget(age),
+    full_day_requirement: getFullDayRequirement(age, gender),
+  };
+};
+
+/**
+ * Get planned complete meal allocation guideline
+ * @param {object} student - Student profile
+ * @returns {object} Planned portions breakdown
  */
 export const getMealComposition = (student) => {
   try {
@@ -101,21 +122,21 @@ export const getMealComposition = (student) => {
 
     const rice = getRiceGrams(student.age);
     const protein = getProteinGrams(student.risk_level, student.age);
-    const vegetables = getVegetablesGrams(student.age, student.current_bmi);
+    const vegetables = getVegetablesGrams(student.age);
     const totalGrams = rice + protein + vegetables;
 
     return {
       rice: {
         grams: rice,
-        item: 'Rice/Wheat',
+        item: 'Cooked Rice',
       },
       protein: {
-        grams: Math.round(protein),
-        item: 'Dal/Paneer/Egg',
+        grams: protein,
+        item: 'Dal / Sambar',
       },
       vegetables: {
         grams: vegetables,
-        item: 'Mixed Vegetables',
+        item: 'Cooked Mixed Vegetables',
       },
       total: totalGrams,
       breakdown: {
@@ -130,61 +151,11 @@ export const getMealComposition = (student) => {
   }
 };
 
-/**
- * Get nutritional info for calculated serving
- * 
- * @param {object} student - Student object
- * @returns {object} Estimated nutritional values
- */
-export const getEstimatedNutrition = (student) => {
-  try {
-    const meal = getMealComposition(student);
-    const riceGrams = meal.rice.grams;
-    const proteinGrams = meal.protein.grams;
-    const vegGrams = meal.vegetables.grams;
-
-    // Approximate nutritional values per 100g
-    const nutritionPer100 = {
-      rice: { cal: 130, protein: 2.7, carbs: 28, fat: 0.3 },
-      dal: { cal: 120, protein: 8, carbs: 20, fat: 0.5 },
-      vegetables: { cal: 25, protein: 1.5, carbs: 4, fat: 0.2 },
-    };
-
-    const total = {
-      calories:
-        (nutritionPer100.rice.cal * riceGrams) / 100 +
-        (nutritionPer100.dal.protein * proteinGrams) / 100 +
-        (nutritionPer100.vegetables.cal * vegGrams) / 100,
-      protein:
-        (nutritionPer100.rice.protein * riceGrams) / 100 +
-        (nutritionPer100.dal.protein * proteinGrams) / 100 +
-        (nutritionPer100.vegetables.protein * vegGrams) / 100,
-      carbs:
-        (nutritionPer100.rice.carbs * riceGrams) / 100 +
-        (nutritionPer100.dal.carbs * proteinGrams) / 100 +
-        (nutritionPer100.vegetables.carbs * vegGrams) / 100,
-      fat:
-        (nutritionPer100.rice.fat * riceGrams) / 100 +
-        (nutritionPer100.dal.fat * proteinGrams) / 100 +
-        (nutritionPer100.vegetables.fat * vegGrams) / 100,
-    };
-
-    return {
-      estimated_calories: Math.round(total.calories),
-      estimated_protein_g: Math.round(total.protein * 10) / 10,
-      estimated_carbs_g: Math.round(total.carbs * 10) / 10,
-      estimated_fat_g: Math.round(total.fat * 10) / 10,
-    };
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    throw new AppError('Failed to calculate nutrition', HTTP_STATUS.INTERNAL_ERROR);
-  }
-};
-
 export default {
   getRiceGrams,
   getProteinGrams,
   getVegetablesGrams,
+  calculateMeasuredNutrients,
+  getStudentNutritionBenchmarks,
   getMealComposition,
-  getEstimatedNutrition,
 };

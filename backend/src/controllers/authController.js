@@ -17,10 +17,10 @@ import { HTTP_STATUS } from '../utils/httpStatus.js';
  * @returns { success, token, user: { id, email, name, role }, message }
  */
 export const signup = asyncHandler(async (req, res) => {
-  const { email, password, name, role } = req.body;
+  const { email, password, name, role, phone, school_name } = req.body;
 
   // Create new user
-  const user = await authService.createUser({ email, password, name, role });
+  const user = await authService.createUser({ email, password, name, role, phone, school_name });
 
   // Generate JWT token
   const { generateToken } = await import('../middlewares/authMiddleware.js');

@@ -5,28 +5,41 @@ import * as alertModel from '../models/alertModel.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { HTTP_STATUS } from '../utils/httpStatus.js';
 import { query } from '../config/db.js';
+import { PM_POSHAN_TARGETS } from '../config/nutritionStandards.js';
 
 /**
  * Dashboard Service
- * Aggregates data for dashboard KPIs and analytics
+ * Aggregates data for dashboard KPIs and analytics using PostgreSQL and PM POSHAN targets
  */
 
 /**
  * Get dashboard aggregated data
  * Returns KPIs for dashboard home page
  * 
- * @returns {Promise<object>} { kpis, bmi_trend, food_intake, risk_distribution, activity }
+ * @returns {Promise<object>} { kpis, calorieTrends, bmiTrends, foodIntake, riskDistribution, activityFeed, timestamp }
  */
 export const getDashboardData = async () => {
   try {
     // Fetch all aggregated data in parallel
-    const [totalStudents, mealsToday, avgBmi, atRiskCount, alertStats, bmiTrend, riskDistribution, recentActivity, foodIntakeData] = await Promise.all([
+    const [
+      totalStudents,
+      mealsToday,
+      avgBmi,
+      atRiskCount,
+      alertStats,
+      bmiTrend,
+      calorieTrend,
+      riskDistribution,
+      recentActivity,
+      foodIntakeData,
+    ] = await Promise.all([
       getTotalStudentsCount(),
       getMealsTodayCount(),
       getAverageBmiValue(),
       getAtRiskStudentsCount(),
       alertModel.getAlertStatistics(),
-      getBmiTrendData(14), // Last 14 days
+      getBmiTrendData(14),
+      getCalorieTrendData(7),
       getRiskDistributionData(),
       getRecentActivityFeed(10),
       getFoodIntakeAggregate(),
@@ -39,12 +52,40 @@ export const getDashboardData = async () => {
       { name: 'Critical', value: riskDistribution.critical, fill: '#EF4444' },
     ];
 
-    // Transform food intake to array format for chart
+    // Reference targets for school mid-day meal (blended ~600 kcal, 16g protein)
+    const schoolMealTargetCalories = Math.round(
+      (PM_POSHAN_TARGETS.PRIMARY.calories + PM_POSHAN_TARGETS.UPPER_PRIMARY.calories) / 2
+    );
+    const schoolMealTargetProtein = Math.round(
+      (PM_POSHAN_TARGETS.PRIMARY.protein_g + PM_POSHAN_TARGETS.UPPER_PRIMARY.protein_g) / 2
+    );
+
+    // Transform food intake to array format for chart (comparing school meal actuals vs PM POSHAN meal targets)
     const foodIntakeArray = [
-      { name: 'Calories', required: 2000, actual: Math.round(foodIntakeData.avg_calories), lastUpdated: new Date().toISOString() },
-      { name: 'Protein', required: 50, actual: Math.round(foodIntakeData.avg_protein), lastUpdated: new Date().toISOString() },
-      { name: 'Carbs', required: 300, actual: Math.round(foodIntakeData.avg_carbs), lastUpdated: new Date().toISOString() },
-      { name: 'Fats', required: 65, actual: Math.round(foodIntakeData.avg_fats), lastUpdated: new Date().toISOString() },
+      {
+        name: 'Calories',
+        required: schoolMealTargetCalories,
+        actual: Math.round(foodIntakeData.avg_calories),
+        lastUpdated: new Date().toISOString(),
+      },
+      {
+        name: 'Protein',
+        required: schoolMealTargetProtein,
+        actual: Math.round(foodIntakeData.avg_protein * 10) / 10,
+        lastUpdated: new Date().toISOString(),
+      },
+      {
+        name: 'Carbs',
+        required: 85,
+        actual: Math.round(foodIntakeData.avg_carbs * 10) / 10,
+        lastUpdated: new Date().toISOString(),
+      },
+      {
+        name: 'Fats',
+        required: 15,
+        actual: Math.round(foodIntakeData.avg_fats * 10) / 10,
+        lastUpdated: new Date().toISOString(),
+      },
     ];
 
     // Transform BMI trend data for chart
@@ -56,7 +97,7 @@ export const getDashboardData = async () => {
     // Transform KPI data to array format
     const kpisArray = [
       {
-        id: 'students',
+        id: 1,
         title: 'Total Students',
         value: totalStudents,
         trend: 0,
@@ -64,7 +105,7 @@ export const getDashboardData = async () => {
         color: 'indigo',
       },
       {
-        id: 'meals',
+        id: 2,
         title: 'Meals Served Today',
         value: mealsToday,
         trend: 0,
@@ -72,7 +113,7 @@ export const getDashboardData = async () => {
         color: 'green',
       },
       {
-        id: 'at_risk',
+        id: 3,
         title: 'At-Risk Students',
         value: atRiskCount,
         trend: 0,
@@ -80,7 +121,7 @@ export const getDashboardData = async () => {
         color: 'yellow',
       },
       {
-        id: 'avg_bmi',
+        id: 4,
         title: 'Avg BMI',
         value: parseFloat(avgBmi.toFixed(1)),
         trend: 0,
@@ -90,22 +131,26 @@ export const getDashboardData = async () => {
     ];
 
     // Transform activity feed
-    const activityFeedArray = recentActivity.map((activity, idx) => ({
-      id: idx + 1,
-      type: activity.type,
-      studentName: activity.student_name || 'Unknown',
-      ...(activity.type === 'meal_served' ? {
-        foodName: activity.description || 'Unknown meal',
-        quantity: '200g',
-      } : {
-        message: activity.description || 'No message',
-        severity: activity.type === 'alert' ? 'critical' : 'info',
-      }),
-      timestamp: activity.timestamp,
-    }));
+    const activityFeedArray = recentActivity.map((activity, idx) => {
+      const isMeal = activity.type === 'food_log' || activity.type === 'meal_served';
+      return {
+        id: idx + 1,
+        type: isMeal ? 'meal_served' : 'alert',
+        studentName: activity.student_name || 'Unknown',
+        ...(isMeal ? {
+          foodName: activity.description || 'Meal',
+          quantity: `${parseFloat(activity.served_grams || 200)}g`,
+        } : {
+          message: activity.description || 'Health alert',
+          severity: activity.severity || 'critical',
+        }),
+        timestamp: activity.timestamp,
+      };
+    });
 
     return {
       kpis: kpisArray,
+      calorieTrends: calorieTrend,
       bmiTrends: bmiTrendsArray,
       foodIntake: foodIntakeArray,
       riskDistribution: riskDistArray,
@@ -205,6 +250,33 @@ const getBmiTrendData = async (days = 14) => {
 };
 
 /**
+ * Get Calorie trend data aggregated by date for the last N days
+ * @private
+ * @param {number} days - Number of days to look back
+ * @returns {Promise<array>} Calorie trend data points
+ */
+const getCalorieTrendData = async (days = 7) => {
+  try {
+    const result = await query(`
+      SELECT 
+        DATE(logged_at) as date,
+        COALESCE(SUM(estimated_calories), 0) as total_calories
+      FROM food_logs
+      WHERE logged_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE(logged_at)
+      ORDER BY DATE(logged_at) ASC
+    `);
+
+    return result.rows.map(row => ({
+      date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      value: Math.round(parseFloat(row.total_calories || 0)),
+    }));
+  } catch (error) {
+    return [];
+  }
+};
+
+/**
  * Get food intake aggregate data
  * @private
  */
@@ -280,7 +352,9 @@ const getRecentActivityFeed = async (limit = 10) => {
         s.id as student_id,
         s.name as student_name,
         f.food_item as description,
-        f.logged_at as timestamp
+        f.served_grams,
+        f.logged_at as timestamp,
+        'info' as severity
       FROM food_logs f
       JOIN students s ON f.student_id = s.id
       
@@ -289,10 +363,13 @@ const getRecentActivityFeed = async (limit = 10) => {
       SELECT 
         'alert' as type,
         a.student_id,
-        a.student_id::text as student_name,
+        COALESCE(s.name, 'Student ' || a.student_id) as student_name,
         a.message as description,
-        a.created_at as timestamp
+        0 as served_grams,
+        a.created_at as timestamp,
+        a.severity
       FROM alerts a
+      LEFT JOIN students s ON a.student_id = s.id
       WHERE a.resolved = false
       
       ORDER BY timestamp DESC
@@ -304,7 +381,9 @@ const getRecentActivityFeed = async (limit = 10) => {
       student_id: row.student_id,
       student_name: row.student_name,
       description: row.description,
+      served_grams: row.served_grams,
       timestamp: row.timestamp,
+      severity: row.severity,
     }));
   } catch (error) {
     return [];

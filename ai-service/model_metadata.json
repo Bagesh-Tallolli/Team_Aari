@@ -1,19 +1,111 @@
 {
+  "model_name": "RandomForestClassifier",
+  "model_version": "3.0.0",
+  "training_timestamp": "2026-11-12T17:56:15.746536",
   "feature_columns": [
     "age",
     "gender",
-    "height",
-    "weight",
+    "height_cm",
+    "weight_kg",
     "bmi",
-    "avg_weekly_calories",
-    "required_calories",
-    "calorie_ratio"
+    "pediatric_z_score_category",
+    "full_day_calories_required",
+    "full_day_protein_required",
+    "school_meal_calories_target",
+    "school_meal_protein_target",
+    "actual_school_calories_served",
+    "actual_school_protein_served",
+    "school_meal_calorie_fulfillment_pct",
+    "school_meal_protein_fulfillment_pct",
+    "seven_day_avg_daily_calories",
+    "seven_day_avg_daily_protein",
+    "recorded_school_days_count"
   ],
+  "feature_count": 17,
   "class_map": {
     "0": "Healthy",
     "1": "At Risk",
     "2": "Underweight"
   },
-  "model_version": "1.0",
-  "description": "RandomForest classifier for malnutrition prediction"
+  "hyperparameters": {
+    "n_estimators": 100,
+    "max_depth": 8,
+    "min_samples_split": 4,
+    "min_samples_leaf": 2,
+    "class_weight": "balanced",
+    "random_state": 42
+  },
+  "evaluation": {
+    "test_accuracy": 1.0,
+    "test_weighted_f1": 1.0,
+    "test_macro_f1": 1.0,
+    "test_precision": 1.0,
+    "test_recall": 1.0,
+    "confusion_matrix": [
+      [
+        68,
+        0,
+        0
+      ],
+      [
+        0,
+        66,
+        0
+      ],
+      [
+        0,
+        0,
+        66
+      ]
+    ],
+    "per_class": {
+      "Healthy": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "support": 68
+      },
+      "At Risk": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "support": 66
+      },
+      "Underweight": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "support": 66
+      }
+    },
+    "cv_mean_accuracy": 0.99,
+    "cv_std_accuracy": 0.0064
+  },
+  "feature_importances": {
+    "school_meal_calorie_fulfillment_pct": 0.26604300282332305,
+    "school_meal_protein_fulfillment_pct": 0.2527865388982496,
+    "pediatric_z_score_category": 0.1707278837486744,
+    "actual_school_calories_served": 0.07140659117595795,
+    "bmi": 0.06308899150522575,
+    "actual_school_protein_served": 0.04388854590411929,
+    "seven_day_avg_daily_calories": 0.039571001329362664,
+    "seven_day_avg_daily_protein": 0.030564370007543976,
+    "weight_kg": 0.01632853903117772,
+    "age": 0.013842035728139903,
+    "height_cm": 0.010007368097770832,
+    "school_meal_calories_target": 0.007565204305145669,
+    "school_meal_protein_target": 0.006575526564114237,
+    "full_day_protein_required": 0.0031495402906707277,
+    "full_day_calories_required": 0.002984603461647032,
+    "recorded_school_days_count": 0.000894257520719515,
+    "gender": 0.0005759996081576802
+  },
+  "dataset_info": {
+    "type": "synthetic",
+    "total_samples": 1000,
+    "train_samples": 800,
+    "test_samples": 200,
+    "source_standards": "WHO Pediatric Growth Reference 5-19 & PM POSHAN 2021 Norms"
+  },
+  "disclaimer": "AI-assisted screening tool for research/educational prototyping in the Mid-Day Meal scheme. NOT clinically validated and NOT a substitute for professional medical diagnosis."
 }

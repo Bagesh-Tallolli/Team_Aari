@@ -116,7 +116,7 @@ export const getUserById = async (userId) => {
  */
 export const createUser = async (userData) => {
   try {
-    const { email, password, name, role } = userData;
+    const { email, password, name, role, phone, school_name } = userData;
     const passwordHash = await hashPassword(password);
 
     // Check if email already exists
@@ -130,9 +130,9 @@ export const createUser = async (userData) => {
     }
 
     const result = await query(
-      `INSERT INTO users (email, password_hash, name, role, active, created_at)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP) RETURNING *`,
-      [email.toLowerCase(), passwordHash, name, role || 'staff', true]
+      `INSERT INTO users (email, password_hash, name, role, phone, school_name, active, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP) RETURNING *`,
+      [email.toLowerCase(), passwordHash, name, role || 'staff', phone || null, school_name || null, true]
     );
 
     const user = result.rows[0];
@@ -143,6 +143,8 @@ export const createUser = async (userData) => {
       email: user.email,
       name: user.name,
       role: user.role,
+      phone: user.phone,
+      school_name: user.school_name,
       avatar: user.avatar,
     };
   } catch (error) {

@@ -14,8 +14,8 @@ function RiskDistributionChart({ data }) {
             data={data}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            label={({ name, value }) => `${name} (${value})`}
+            labelLine={({ value }) => value > 0}
+            label={({ name, value }) => value > 0 ? `${name} (${value})` : ''}
             outerRadius={100}
             fill="#8884d8"
             dataKey="value"
