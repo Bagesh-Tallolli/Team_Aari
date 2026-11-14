@@ -382,7 +382,10 @@ export const generateDietRecommendation = async (studentId, options = {}) => {
       logger.debug(`AI microservice not queried for recommendation (${aiErr.message})`);
     }
 
-    // Step 8: Assemble Structured Recommendation Plan
+    // Step 8: Build Balanced Desi Meal Plans (Breakfast & Dinner) matching Remaining Calories
+    const desiMealPlans = buildDesiMealPlans(remainingDailyCalories);
+
+    // Step 9: Assemble Structured Recommendation Plan
     const timestamp = new Date().toISOString();
     const planId = `rec_${sId}_${Date.now()}`;
 
@@ -391,6 +394,10 @@ export const generateDietRecommendation = async (studentId, options = {}) => {
       plan_id: planId,
       student_id: sId,
       generated_at: timestamp,
+
+      // NEW: Desi Meal Plans for Breakfast & Dinner matching remaining daily calories
+      desi_meal_plans: desiMealPlans,
+      current_meal_plan: isVegetarian ? desiMealPlans.veg : desiMealPlans.non_veg,
 
       // SECTION A: STUDENT SUMMARY
       student_summary: {
@@ -531,6 +538,312 @@ export const getLatestRecommendation = async (studentId) => {
 };
 
 /**
+ * Build balanced Desi Indian meal plans for Breakfast and Dinner
+ * strictly scaled to match the student's remaining daily ICMR calories.
+ * 
+ * @param {number} remainingCalories - Daily remaining ICMR calories after school serving
+ * @returns {object} { veg, non_veg }
+ */
+export const buildDesiMealPlans = (remainingCalories) => {
+  const rem = Math.max(0, Math.round(remainingCalories || 0));
+
+  const generateForType = (isVeg) => {
+    if (rem <= 0) {
+      return {
+        type: isVeg ? 'veg' : 'non_veg',
+        type_label: isVeg ? 'Vegetarian' : 'Non-Vegetarian & Egg',
+        total_remaining_calories: 0,
+        total_recommended_calories: 0,
+        total_recommended_protein_g: 0,
+        is_fully_met: true,
+        breakfast: {
+          label: 'Morning Breakfast',
+          desi_title: isVeg ? '🌅 Desi Morning Breakfast (Ghar Ka Nashta)' : '🌅 Desi High-Protein Breakfast (Ande & Nashta)',
+          target_calories: 0,
+          total_calories: 0,
+          total_protein_g: 0,
+          items: [],
+        },
+        dinner: {
+          label: 'Evening Dinner',
+          desi_title: isVeg ? '🌙 Evening Family Dinner (Roti, Daal & Sabzi)' : '🌙 Evening Wholesome Dinner (Chicken, Roti & Rice)',
+          target_calories: 0,
+          total_calories: 0,
+          total_protein_g: 0,
+          items: [],
+        },
+      };
+    }
+
+    // Split: Breakfast 40%, Dinner 60%
+    const bTarget = Math.round(rem * 0.40);
+    const dTarget = rem - bTarget;
+
+    // Breakfast items
+    let bItems = [];
+    if (isVeg) {
+      const c1 = Math.round(bTarget * 0.42); // Poha with Peanuts
+      const c2 = Math.round(bTarget * 0.28); // Cow Milk
+      const c3 = Math.round(bTarget * 0.18); // Banana
+      const c4 = bTarget - (c1 + c2 + c3);   // Roasted Chana
+
+      const g1 = Math.round(c1 / 1.6);
+      const g2 = Math.round(c2 / 0.65);
+      const g3 = Math.round(c3 / 0.90);
+      const g4 = Math.round(c4 / 3.6);
+
+      bItems = [
+        {
+          name: 'Desi Poha with Peanuts & Veggies',
+          desi_name: 'पोहा / ಅವಲಕ್ಕಿ (Poha)',
+          grams: g1,
+          portion: `${g1}g (1.5 Plates)`,
+          calories: c1,
+          protein_g: parseFloat(((c1 / 1.6) * 0.045).toFixed(1)),
+          description: 'Flaked rice tempered with mustard, roasted peanuts, and carrots for wholesome morning energy.',
+          icon: 'poha',
+        },
+        {
+          name: 'Warm Fresh Cow Milk',
+          desi_name: 'गरम दूध / ಹಾಲು (Warm Milk)',
+          grams: g2,
+          portion: `${g2}ml (1 Glass)`,
+          calories: c2,
+          protein_g: parseFloat((g2 * 0.033).toFixed(1)),
+          description: 'Calcium and bioavailable milk protein for healthy pediatric bone density.',
+          icon: 'milk',
+        },
+        {
+          name: 'Fresh Seasonal Banana',
+          desi_name: 'ताज़ा केला / ಬಾಳೆಹಣ್ಣು (Banana)',
+          grams: g3,
+          portion: `${g3}g (1-2 Fruits)`,
+          calories: c3,
+          protein_g: parseFloat((g3 * 0.012).toFixed(1)),
+          description: 'Rich in dietary potassium, vitamin B6, and natural quick-digesting carbohydrates.',
+          icon: 'fruit',
+        },
+        {
+          name: 'Roasted Bengal Gram (Chana)',
+          desi_name: 'भुना चना / ಹುರಿಗಡಲೆ (Roasted Chana)',
+          grams: g4,
+          portion: `${g4}g (1 Handful)`,
+          calories: c4,
+          protein_g: parseFloat((g4 * 0.18).toFixed(1)),
+          description: 'Traditional desi protein snack rich in dietary fiber and plant iron.',
+          icon: 'chana',
+        },
+      ];
+    } else {
+      const c1 = Math.round(bTarget * 0.38); // Boiled Eggs
+      const numEggs = Math.max(1, Math.round(c1 / 78));
+      const adjC1 = numEggs * 78;
+      const eggGrams = numEggs * 50;
+
+      const remainingB = bTarget - adjC1;
+      const adjC2 = Math.round(remainingB * 0.52); // Roti
+      const adjC3 = Math.round(remainingB * 0.32); // Milk
+      const adjC4 = remainingB - (adjC2 + adjC3);  // Fruit
+
+      const numRotis = Math.max(1, Math.round(adjC2 / 105));
+      const rotiGrams = numRotis * 35;
+      const g3 = Math.round(adjC3 / 0.65);
+      const g4 = Math.round(adjC4 / 0.90);
+
+      bItems = [
+        {
+          name: 'Fresh Boiled Eggs / Egg Bhurji',
+          desi_name: 'उबले अंडे / ಬೇಯಿಸಿದ ಮೊಟ್ಟೆ (Boiled Eggs)',
+          grams: eggGrams,
+          portion: `${numEggs} Whole ${numEggs === 1 ? 'Egg' : 'Eggs'} (${eggGrams}g)`,
+          calories: adjC1,
+          protein_g: parseFloat((numEggs * 6.3).toFixed(1)),
+          description: 'Complete high-biological-value protein and essential choline for brain growth.',
+          icon: 'egg',
+        },
+        {
+          name: 'Whole Wheat Tawa Roti (Chapati)',
+          desi_name: 'गरम तवा रोटी / ಚಪಾತಿ (Chapati)',
+          grams: rotiGrams,
+          portion: `${numRotis} ${numRotis === 1 ? 'Roti' : 'Rotis'} (${rotiGrams}g)`,
+          calories: adjC2,
+          protein_g: parseFloat((numRotis * 3.2).toFixed(1)),
+          description: 'Whole wheat chapati offering complex carbohydrates and sustained morning stamina.',
+          icon: 'roti',
+        },
+        {
+          name: 'Warm Fresh Cow Milk',
+          desi_name: 'गरम दूध / ಹಾಲು (Warm Milk)',
+          grams: g3,
+          portion: `${g3}ml (1 Cup)`,
+          calories: adjC3,
+          protein_g: parseFloat((g3 * 0.033).toFixed(1)),
+          description: 'High-quality calcium for skeletal strength and neuromuscular health.',
+          icon: 'milk',
+        },
+        {
+          name: 'Fresh Seasonal Fruit (Banana)',
+          desi_name: 'ताज़ा फल / ಹಣ್ಣು (Fruit)',
+          grams: g4,
+          portion: `${g4}g (1 Medium)`,
+          calories: adjC4,
+          protein_g: parseFloat((g4 * 0.012).toFixed(1)),
+          description: 'Natural fruit sugars and dietary fiber for gastrointestinal balance.',
+          icon: 'fruit',
+        },
+      ];
+    }
+
+    // Dinner items
+    let dItems = [];
+    if (isVeg) {
+      const c1 = Math.round(dTarget * 0.35); // Roti
+      const c2 = Math.round(dTarget * 0.28); // Daal
+      const c3 = Math.round(dTarget * 0.22); // Rice
+      const c4 = dTarget - (c1 + c2 + c3);   // Sabzi
+
+      const numRotis = Math.max(1, Math.round(c1 / 105));
+      const rotiGrams = numRotis * 35;
+      const g2 = Math.round(c2 / 1.05);
+      const g3 = Math.round(c3 / 1.30);
+      const g4 = Math.round(c4 / 0.85);
+
+      dItems = [
+        {
+          name: 'Fresh Wheat Roti (Phulka / Chapati)',
+          desi_name: 'ताज़ा गेहूं रोटी / ಚಪಾತಿ (Phulka)',
+          grams: rotiGrams,
+          portion: `${numRotis} ${numRotis === 1 ? 'Roti' : 'Rotis'} (${rotiGrams}g)`,
+          calories: c1,
+          protein_g: parseFloat((numRotis * 3.2).toFixed(1)),
+          description: 'Traditional stone-ground whole wheat rotis lightly topped with desi ghee.',
+          icon: 'roti',
+        },
+        {
+          name: 'Cooked Toor / Moong Daal Tadka',
+          desi_name: 'तड़का दाल / ಬೇಳೆ ಸಾರು (Daal Tadka)',
+          grams: g2,
+          portion: `${g2}g (${(g2 / 150).toFixed(1)} Bowls)`,
+          calories: c2,
+          protein_g: parseFloat((g2 * 0.055).toFixed(1)),
+          description: 'Traditional slow-cooked yellow lentils tempered with cumin, garlic, and turmeric.',
+          icon: 'daal',
+        },
+        {
+          name: 'Steamed Rice (Ghar Ka Chawal)',
+          desi_name: 'गरम उबले चावल / ಅನ್ನ (Steamed Rice)',
+          grams: g3,
+          portion: `${g3}g (${(g3 / 150).toFixed(1)} Bowls)`,
+          calories: c3,
+          protein_g: parseFloat((g3 * 0.027).toFixed(1)),
+          description: 'Steamed white rice providing complete amino acid profile when paired with daal.',
+          icon: 'rice',
+        },
+        {
+          name: 'Mixed Seasonal Sabzi / Bhaji',
+          desi_name: 'सब्ज़ी / ಪಲ್ಯ (Vegetable Sabzi)',
+          grams: g4,
+          portion: `${g4}g (${(g4 / 150).toFixed(1)} Bowls)`,
+          calories: c4,
+          protein_g: parseFloat((g4 * 0.024).toFixed(1)),
+          description: 'Local seasonal vegetables (green beans, carrots, potato, spinach) cooked in mild spices.',
+          icon: 'sabzi',
+        },
+      ];
+    } else {
+      const c1 = Math.round(dTarget * 0.38); // Chicken Curry
+      const c2 = Math.round(dTarget * 0.28); // Roti
+      const c3 = Math.round(dTarget * 0.20); // Rice
+      const c4 = dTarget - (c1 + c2 + c3);   // Daal
+
+      const g1 = Math.round(c1 / 1.55);
+      const numRotis = Math.max(1, Math.round(c2 / 105));
+      const rotiGrams = numRotis * 35;
+      const g3 = Math.round(c3 / 1.30);
+      const g4 = Math.round(c4 / 1.05);
+
+      dItems = [
+        {
+          name: 'Desi Chicken Curry (Tariwala Chicken)',
+          desi_name: 'देसी चिकन करी / ಕೋಳಿ ಸಾರು (Chicken Curry)',
+          grams: g1,
+          portion: `${g1}g (${(g1 / 150).toFixed(1)} Bowls)`,
+          calories: c1,
+          protein_g: parseFloat((g1 * 0.14).toFixed(1)),
+          description: 'Lean chicken stewed with onion, tomato, and mild Indian spices for dense animal protein.',
+          icon: 'chicken',
+        },
+        {
+          name: 'Fresh Wheat Roti (Phulka / Chapati)',
+          desi_name: 'ताज़ा रोटी / ಚಪಾತಿ (Phulka)',
+          grams: rotiGrams,
+          portion: `${numRotis} ${numRotis === 1 ? 'Roti' : 'Rotis'} (${rotiGrams}g)`,
+          calories: c2,
+          protein_g: parseFloat((numRotis * 3.2).toFixed(1)),
+          description: 'Fresh stone-ground wheat rotis providing energy-dense dietary complex carbs.',
+          icon: 'roti',
+        },
+        {
+          name: 'Steamed Rice (Ghar Ka Chawal)',
+          desi_name: 'गरम उबले चावल / ಅನ್ನ (Steamed Rice)',
+          grams: g3,
+          portion: `${g3}g (${(g3 / 150).toFixed(1)} Bowls)`,
+          calories: c3,
+          protein_g: parseFloat((g3 * 0.027).toFixed(1)),
+          description: 'Soft steamed rice that pairs perfectly with chicken curry and daal gravy.',
+          icon: 'rice',
+        },
+        {
+          name: 'Cooked Yellow Daal (Toor / Moong)',
+          desi_name: 'तड़का दाल / ಬೇಳೆ ಸಾರು (Yellow Daal)',
+          grams: g4,
+          portion: `${g4}g (${(g4 / 150).toFixed(1)} Bowls)`,
+          calories: c4,
+          protein_g: parseFloat((g4 * 0.055).toFixed(1)),
+          description: 'Digestive pulse gravy ensuring dietary fiber and mineral variety.',
+          icon: 'daal',
+        },
+      ];
+    }
+
+    const bTotalCals = bItems.reduce((acc, it) => acc + it.calories, 0);
+    const bTotalProtein = parseFloat(bItems.reduce((acc, it) => acc + it.protein_g, 0).toFixed(1));
+    const dTotalCals = dItems.reduce((acc, it) => acc + it.calories, 0);
+    const dTotalProtein = parseFloat(dItems.reduce((acc, it) => acc + it.protein_g, 0).toFixed(1));
+
+    return {
+      type: isVeg ? 'veg' : 'non_veg',
+      type_label: isVeg ? 'Vegetarian' : 'Non-Vegetarian & Egg',
+      total_remaining_calories: rem,
+      total_recommended_calories: bTotalCals + dTotalCals,
+      total_recommended_protein_g: parseFloat((bTotalProtein + dTotalProtein).toFixed(1)),
+      is_match: (bTotalCals + dTotalCals) === rem,
+      breakfast: {
+        label: 'Morning Breakfast',
+        desi_title: isVeg ? '🌅 Desi Morning Breakfast (Ghar Ka Nashta)' : '🌅 Desi High-Protein Breakfast (Ande & Nashta)',
+        target_calories: bTarget,
+        total_calories: bTotalCals,
+        total_protein_g: bTotalProtein,
+        items: bItems,
+      },
+      dinner: {
+        label: 'Evening Dinner',
+        desi_title: isVeg ? '🌙 Evening Family Dinner (Roti, Daal & Sabzi)' : '🌙 Evening Wholesome Dinner (Chicken, Roti & Rice)',
+        target_calories: dTarget,
+        total_calories: dTotalCals,
+        total_protein_g: dTotalProtein,
+        items: dItems,
+      },
+    };
+  };
+
+  return {
+    veg: generateForType(true),
+    non_veg: generateForType(false),
+  };
+};
+
+/**
  * Non-destructive persistence of suggested items into diet_plan_items
  * Only replaces lunch / snack recommendations for this student, preserving all student and food log history.
  */
@@ -566,5 +879,6 @@ const persistRecommendationItems = async (studentId, suggestions) => {
 export default {
   generateDietRecommendation,
   getLatestRecommendation,
+  buildDesiMealPlans,
 };
 
