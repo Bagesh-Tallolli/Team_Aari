@@ -1,0 +1,27 @@
+age_years,gender,reference_weight_kg,reference_height_cm,who_bmi_sd_minus2_thinness,who_bmi_median_normal,who_bmi_sd_plus1_overweight,who_bmi_sd_plus2_obesity,normal_bmi_range,icmr_full_day_calories_kcal,icmr_full_day_protein_g,icmr_daily_calcium_mg,icmr_daily_iron_mg,pm_poshan_school_calories_kcal,pm_poshan_school_protein_g,pm_poshan_stage,category_guideline
+6,Male,20.2,115.5,13.0,15.3,16.8,18.5,13.0 - 16.8,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 13.0 Thinness | 13.0-16.8 Normal | > 16.8 Overweight
+6,Female,19.8,114.6,12.7,15.2,16.9,18.8,12.7 - 16.9,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 12.7 Thinness | 12.7-16.9 Normal | > 16.9 Overweight
+7,Male,22.4,121.1,13.1,15.5,17.2,19.2,13.1 - 17.2,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 13.1 Thinness | 13.1-17.2 Normal | > 17.2 Overweight
+7,Female,22.0,120.2,12.9,15.4,17.4,19.7,12.9 - 17.4,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 12.9 Thinness | 12.9-17.4 Normal | > 17.4 Overweight
+8,Male,25.0,126.8,13.3,15.8,17.7,20.1,13.3 - 17.7,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 13.3 Thinness | 13.3-17.7 Normal | > 17.7 Overweight
+8,Female,24.6,126.0,13.1,15.7,17.9,20.6,13.1 - 17.9,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 13.1 Thinness | 13.1-17.9 Normal | > 17.9 Overweight
+9,Male,28.1,132.2,13.6,16.2,18.3,21.1,13.6 - 18.3,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 13.6 Thinness | 13.6-18.3 Normal | > 18.3 Overweight
+9,Female,28.2,132.2,13.5,16.1,18.6,21.7,13.5 - 18.6,1500,18.0,550.0,15.0,450,12.0,Primary (Class I-V),< 13.5 Thinness | 13.5-18.6 Normal | > 18.6 Overweight
+10,Male,31.4,137.5,14.0,16.6,19.0,22.2,14.0 - 19.0,2220,32.0,850.0,16.0,450,12.0,Primary (Class I-V),< 14.0 Thinness | 14.0-19.0 Normal | > 19.0 Overweight
+10,Female,31.9,138.3,13.9,16.6,19.3,22.8,13.9 - 19.3,2060,33.0,850.0,15.0,450,12.0,Primary (Class I-V),< 13.9 Thinness | 13.9-19.3 Normal | > 19.3 Overweight
+11,Male,35.3,143.0,14.5,17.2,19.9,23.5,14.5 - 19.9,2220,32.0,850.0,16.0,700,20.0,Upper Primary (Class VI-VIII),< 14.5 Thinness | 14.5-19.9 Normal | > 19.9 Overweight
+11,Female,36.3,144.8,14.4,17.3,20.2,24.1,14.4 - 20.2,2060,33.0,850.0,15.0,700,20.0,Upper Primary (Class VI-VIII),< 14.4 Thinness | 14.4-20.2 Normal | > 20.2 Overweight
+12,Male,39.8,149.0,15.0,17.8,20.8,24.8,15.0 - 20.8,2220,32.0,850.0,16.0,700,20.0,Upper Primary (Class VI-VIII),< 15.0 Thinness | 15.0-20.8 Normal | > 20.8 Overweight
+12,Female,41.5,151.2,14.9,18.0,21.3,25.4,14.9 - 21.3,2060,33.0,850.0,15.0,700,20.0,Upper Primary (Class VI-VIII),< 14.9 Thinness | 14.9-21.3 Normal | > 21.3 Overweight
+13,Male,45.3,156.0,15.5,18.5,21.8,25.9,15.5 - 21.8,2860,45.0,1000.0,22.0,700,20.0,Upper Primary (Class VI-VIII),< 15.5 Thinness | 15.5-21.8 Normal | > 21.8 Overweight
+13,Female,46.7,156.4,15.4,18.8,22.3,26.6,15.4 - 22.3,2400,43.0,1000.0,27.0,700,20.0,Upper Primary (Class VI-VIII),< 15.4 Thinness | 15.4-22.3 Normal | > 22.3 Overweight
+14,Male,50.8,163.2,16.0,19.2,22.7,26.9,16.0 - 22.7,2860,45.0,1000.0,22.0,700,20.0,Upper Primary (Class VI-VIII),< 16.0 Thinness | 16.0-22.7 Normal | > 22.7 Overweight
+14,Female,50.4,159.8,16.0,19.6,23.3,27.7,16.0 - 23.3,2400,43.0,1000.0,27.0,700,20.0,Upper Primary (Class VI-VIII),< 16.0 Thinness | 16.0-23.3 Normal | > 23.3 Overweight
+15,Male,56.0,169.0,16.6,19.9,23.6,27.7,16.6 - 23.6,2860,45.0,1000.0,22.0,700,20.0,Upper Primary (Class VI-VIII),< 16.6 Thinness | 16.6-23.6 Normal | > 23.6 Overweight
+15,Female,52.8,161.7,16.4,20.2,24.0,28.6,16.4 - 24.0,2400,43.0,1000.0,27.0,700,20.0,Upper Primary (Class VI-VIII),< 16.4 Thinness | 16.4-24.0 Normal | > 24.0 Overweight
+16,Male,60.5,173.0,17.1,20.5,24.4,28.9,17.1 - 24.4,3320,54.0,1000.0,26.0,750,22.0,Secondary (Class IX+),< 17.1 Thinness | 17.1-24.4 Normal | > 24.4 Overweight
+16,Female,54.0,162.5,16.8,20.7,24.7,29.3,16.8 - 24.7,2500,46.0,1000.0,29.0,750,22.0,Secondary (Class IX+),< 16.8 Thinness | 16.8-24.7 Normal | > 24.7 Overweight
+17,Male,64.4,175.2,17.5,21.1,25.0,29.5,17.5 - 25.0,3320,54.0,1000.0,26.0,750,22.0,Secondary (Class IX+),< 17.5 Thinness | 17.5-25.0 Normal | > 25.0 Overweight
+17,Female,55.0,163.0,17.2,21.0,25.2,29.8,17.2 - 25.2,2500,46.0,1000.0,29.0,750,22.0,Secondary (Class IX+),< 17.2 Thinness | 17.2-25.2 Normal | > 25.2 Overweight
+18,Male,65.0,177.0,17.8,21.5,25.4,30.0,17.8 - 25.4,3320,54.0,1000.0,26.0,750,22.0,Secondary (Class IX+),< 17.8 Thinness | 17.8-25.4 Normal | > 25.4 Overweight
+18,Female,55.5,163.5,17.4,21.3,25.5,30.2,17.4 - 25.5,2500,46.0,1000.0,29.0,750,22.0,Secondary (Class IX+),< 17.4 Thinness | 17.4-25.5 Normal | > 25.5 Overweight
