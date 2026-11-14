@@ -1,7 +1,7 @@
 /*
- * ESP8266 Firmware - Complete System (Updated Pin Setup & Port 5003)
- * Pin map matching the new wiring:
+ * ESP8266 Firmware - Complete System
  *
+ * Current Pin Map:
  *  RC522 : SS=D2  SCK=D5  MOSI=D7  MISO=D6  RST=D0  VCC=3.3V  GND=GND
  *  HX711 : DT=D3  SCK=D4  VCC=3.3V  GND=GND
  *  Servo : Signal=D1  VCC=External 5V  GND=Common GND
@@ -17,28 +17,30 @@
 #include <Servo.h>
 
 // ============================================
-// NETWORK CONFIGURATION
+// NETWORK CONFIG
 // ============================================
 
-// NOTE: Both the ESP8266 and your Laptop MUST be connected to the exact same Wi-Fi!
-// Your laptop is currently connected to "PANCHAYYA 2044" with IP: 192.168.137.236
-#define WIFI_SSID     "PANCHAYYA 2044"
-#define WIFI_PASSWORD "Drait@1982"   // <-- Set to your PANCHAYYA 2044 Wi-Fi password
-#define BASE_URL      "http://192.168.137.236:5001"
+#define WIFI_SSID     "OPPO Reno10 5G"
+#define WIFI_PASSWORD "12345678"
 
-// RC522 — Software SPI (New Pins)
-#define SS_PIN    D2      // GPIO4
-#define RST_PIN   D0      // GPIO16
+// ⚠️ Port is 5002 — the backend fell back from 5001.
+// ⚠️ IP must be your PC's CURRENT IP on the hotspot.
+#define BASE_URL     "http://10.44.90.54:5001"
 
-// HX711 — ordinary digital pins (New Pins)
-#define HX711_DT  D3      // GPIO0
-#define HX711_SCK D4      // GPIO2
+// ============================================
+// PIN DEFINITIONS (Current Hardware Wiring)
+// ============================================
 
-// Servo — signal pin (New Pin)
-#define SERVO_PIN D1      // GPIO5
+#define SS_PIN    D2      // GPIO4 (RC522 SS)
+#define RST_PIN   D0      // GPIO16 (RC522 RST)
+
+#define HX711_DT  D3      // GPIO0 (HX711 Data)
+#define HX711_SCK D4      // GPIO2 (HX711 Clock)
+
+#define SERVO_PIN D1      // GPIO5 (Servo Signal)
 
 #define SERVO_CLOSED 0
-#define SERVO_OPEN   90   // Changed to 90 based on your test code
+#define SERVO_OPEN   90
 
 #define CALIBRATION_FACTOR 113.5
 
@@ -77,6 +79,7 @@ const unsigned long CARD_READ_DELAY = 2000;
 // ============================================
 
 void   connectToWiFi();
+bool   pingBackend();
 String requestScan(String uid);
 bool   sendServedData(int id, String name, String food, float g, float cal, String status);
 void   serveFood();
@@ -89,7 +92,7 @@ void   processCard();
 
 void connectToWiFi() {
   Serial.println("--------------------------------");
-  Serial.print("Connecting to Wi-Fi SSID: ");
+  Serial.print("Connecting to ");
   Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
@@ -104,16 +107,49 @@ void connectToWiFi() {
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println();
-    Serial.print("✓ Connected to Wi-Fi! ESP IP: ");
+    Serial.print("Connected. IP: ");
     Serial.println(WiFi.localIP());
-    Serial.print("✓ Backend Target: ");
-    Serial.println(BASE_URL);
   } else {
-    Serial.println("\n❌ Wi-Fi connection failed. Retrying...");
-    delay(3000);
+    Serial.println("\nWiFi failed. Restarting...");
     ESP.restart();
   }
   Serial.println("--------------------------------");
+}
+
+// ============================================
+// BACKEND HEALTH CHECK (runs once at boot)
+// ============================================
+
+bool pingBackend() {
+  HTTPClient http;
+  Serial.print("Pinging backend: ");
+  Serial.println(BASE_URL);
+
+  http.begin(wifiClient, String(BASE_URL) + "/api/hardware/scan");
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(5000);
+
+  // Send a dummy UID — backend should return 404-ish JSON for unknown card,
+  // which still proves the server is reachable and responding.
+  String payload = "{\"uid\":\"00 00 00 00\"}";
+  int code = http.POST(payload);
+
+  bool ok = false;
+  if (code > 0) {
+    String body = http.getString();
+    Serial.print("  HTTP ");
+    Serial.println(code);
+    Serial.print("  Body: ");
+    Serial.println(body.substring(0, 120));
+    ok = (code == HTTP_CODE_OK || code == HTTP_CODE_NOT_FOUND ||
+          code == HTTP_CODE_BAD_REQUEST);
+  } else {
+    Serial.print("  Connection failed: ");
+    Serial.println(http.errorToString(code));
+  }
+
+  http.end();
+  return ok;
 }
 
 // ============================================
@@ -133,46 +169,65 @@ void setServoPosition(int angle) {
   }
 
   servoMotor.write(angle);
-  delay(1000);              // give the servo time to physically move
-  servoMotor.detach();      // stop PWM -> no jitter
+  delay(1000);
+  servoMotor.detach();
   delay(50);
 }
 
 // ============================================
-// RFID SCAN REQUEST
+// RFID SCAN REQUEST (with 2 retries)
 // ============================================
 
 String requestScan(String uid) {
-  HTTPClient http;
-  String response = "";
+  for (int attempt = 1; attempt <= 2; attempt++) {
+    HTTPClient http;
+    String response = "";
 
-  http.begin(wifiClient, String(BASE_URL) + "/api/hardware/scan");
-  http.addHeader("Content-Type", "application/json");
+    Serial.print("POST ");
+    Serial.print(BASE_URL);
+    Serial.println("/api/hardware/scan");
 
-  String payload = "{\"uid\":\"" + uid + "\"}";
-  Serial.print("Payload: ");
-  Serial.println(payload);
+    http.begin(wifiClient, String(BASE_URL) + "/api/hardware/scan");
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(8000);
 
-  int httpCode = http.POST(payload);
+    String payload = "{\"uid\":\"" + uid + "\"}";
+    Serial.print("Payload: ");
+    Serial.println(payload);
 
-  if (httpCode > 0) {
-    if (httpCode == HTTP_CODE_OK) {
-      response = http.getString();
-      Serial.println("Response OK");
+    int httpCode = http.POST(payload);
+
+    if (httpCode > 0) {
+      if (httpCode == HTTP_CODE_OK) {
+        response = http.getString();
+        Serial.println("Response OK");
+        Serial.print("Body: ");
+        Serial.println(response);
+        http.end();
+        return response;
+      } else {
+        Serial.print("HTTP ");
+        Serial.print(httpCode);
+        Serial.print(" body: ");
+        Serial.println(http.getString());
+        response = "{\"error\":\"HTTP " + String(httpCode) + "\"}";
+      }
     } else {
-      response = "{\"error\":\"HTTP " + String(httpCode) + "\"}";
-      Serial.print("HTTP Error: ");
-      Serial.println(httpCode);
+      Serial.print("Connection failed: ");
+      Serial.println(http.errorToString(httpCode));
+      response = "{\"error\":\"Connection Failed\"}";
     }
-  } else {
-    String errStr = http.errorToString(httpCode);
-    response = "{\"error\":\"" + errStr + "\"}";
-    Serial.print("Connection Error: ");
-    Serial.println(errStr);
-  }
 
-  http.end();
-  return response;
+    http.end();
+
+    if (attempt < 2) {
+      Serial.println("Retrying in 500 ms...");
+      delay(500);
+    } else {
+      return response;
+    }
+  }
+  return "{\"error\":\"Unknown\"}";
 }
 
 // ============================================
@@ -186,6 +241,7 @@ bool sendServedData(int id, String name, String food,
 
   http.begin(wifiClient, String(BASE_URL) + "/api/hardware/served");
   http.addHeader("Content-Type", "application/json");
+  http.setTimeout(8000);
 
   StaticJsonDocument<256> doc;
   doc["studentId"]      = id;
@@ -204,8 +260,17 @@ bool sendServedData(int id, String name, String food,
 
   if (httpCode == HTTP_CODE_OK) {
     String resp = http.getString();
+    Serial.print("Served response: ");
+    Serial.println(resp);
     StaticJsonDocument<128> rd;
     if (!deserializeJson(rd, resp) && rd["success"].as<bool>()) success = true;
+  } else if (httpCode > 0) {
+    Serial.print("Served HTTP ");
+    Serial.println(httpCode);
+    Serial.println(http.getString());
+  } else {
+    Serial.print("Served conn failed: ");
+    Serial.println(http.errorToString(httpCode));
   }
 
   http.end();
@@ -223,7 +288,6 @@ void serveFood() {
   setServoPosition(SERVO_OPEN);
   gateOpened = true;
 
-  // Simulated weight ramp (demo mode)
   float w = 0;
   while (w < targetGrams) {
     w += 30;
@@ -233,13 +297,13 @@ void serveFood() {
     Serial.print("g / ");
     Serial.print(targetGrams, 0);
     Serial.println("g");
-    delay(50);
+    delay(300);
   }
 
   gramsServed    = targetGrams;
   caloriesServed = calories;
   Serial.println("Target Reached!");
-  delay(50);
+  delay(500);
 
   Serial.println("Closing Gate...");
   setServoPosition(SERVO_CLOSED);
@@ -339,7 +403,7 @@ void setup() {
   Serial.print("RFID version: 0x");
   Serial.println(v, HEX);
   if (v == 0x00 || v == 0xFF) {
-    Serial.println("ERROR: RC522 not detected — check wiring on D2/D0");
+    Serial.println("ERROR: RC522 not detected — check wiring");
   } else {
     Serial.println("RC522 OK");
   }
@@ -360,7 +424,7 @@ void setup() {
     scaleReady = false;
   }
 
-  // ---- Servo: park at CLOSED, then detach ----
+  // ---- Servo ----
   Serial.println("Initializing Servo...");
   servoMotor.attach(SERVO_PIN);
   delay(500);
@@ -371,6 +435,15 @@ void setup() {
 
   // ---- WiFi ----
   connectToWiFi();
+
+  // ---- Backend health check ----
+  if (!pingBackend()) {
+    Serial.println("⚠️  BACKEND UNREACHABLE.");
+    Serial.println("   Check: port, PC IP, firewall, hotspot network.");
+    Serial.println("   Will still try cards, but expect errors.");
+  } else {
+    Serial.println("✓ Backend reachable.");
+  }
 
   isServing       = false;
   promptDisplayed = false;

@@ -130,20 +130,10 @@ export const getComprehensiveStudentProfile = async (studentId) => {
       }))
       .sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
 
+    // Strict Daily Tracking: Served calories strictly represent today's consumption.
+    // When date changes to the next day, served calories start at 0 until fresh meal is dispensed today.
     let actualSchoolCaloriesToday = parseFloat(dailySummary?.total_calories || 0);
     let actualSchoolProteinToday = parseFloat(dailySummary?.total_protein || 0);
-
-    // Fallback: If no logs logged on current calendar date but student has recorded machine servings (e.g. demo data),
-    // use the most recent serving session so served calories exist
-    if (actualSchoolCaloriesToday === 0 && formattedFoodLogs.length > 0) {
-      const latestDate = formattedFoodLogs[0].logged_at ? new Date(formattedFoodLogs[0].logged_at).toISOString().split('T')[0] : null;
-      const sameDayLogs = formattedFoodLogs.filter(l => {
-        const d = l.logged_at ? new Date(l.logged_at).toISOString().split('T')[0] : null;
-        return d === latestDate;
-      });
-      actualSchoolCaloriesToday = parseFloat(sameDayLogs.reduce((acc, l) => acc + (l.estimated_calories || 0), 0).toFixed(2));
-      actualSchoolProteinToday = parseFloat(sameDayLogs.reduce((acc, l) => acc + (l.protein || 0), 0).toFixed(2));
-    }
 
     const isMachineServed = actualSchoolCaloriesToday > 0;
     const schoolMealCalorieGap = Math.max(0, parseFloat((schoolMealTarget.calories - actualSchoolCaloriesToday).toFixed(2)));

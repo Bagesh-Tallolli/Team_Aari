@@ -83,7 +83,7 @@ export const getTodaysFoodLogs = async (studentId) => {
     const result = await query(
       `SELECT * FROM food_logs 
        WHERE student_id = $1
-       AND CURRENT_DATE = DATE(logged_at)
+       AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
        ORDER BY logged_at DESC`,
       [studentId]
     );
@@ -113,7 +113,7 @@ export const getDailyNutritionSummary = async (studentId, date = null) => {
          COALESCE(SUM(carbs), 0) as total_carbs,
          COALESCE(SUM(fats), 0) as total_fats
        FROM food_logs 
-       WHERE student_id = $1 AND DATE(logged_at) = $2`;
+       WHERE student_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2::date`;
       params = [studentId, date];
     } else {
       query_text = `SELECT 
@@ -123,7 +123,7 @@ export const getDailyNutritionSummary = async (studentId, date = null) => {
          COALESCE(SUM(carbs), 0) as total_carbs,
          COALESCE(SUM(fats), 0) as total_fats
        FROM food_logs 
-       WHERE student_id = $1 AND CURRENT_DATE = DATE(logged_at)`;
+       WHERE student_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date`;
       params = [studentId];
     }
 
@@ -175,11 +175,11 @@ export const getWeeklyAverageCalories = async (studentId) => {
   try {
     const result = await query(
       `WITH daily_totals AS (
-         SELECT DATE(logged_at) AS log_date, SUM(estimated_calories) AS day_cals
+         SELECT DATE(logged_at AT TIME ZONE 'Asia/Kolkata') AS log_date, SUM(estimated_calories) AS day_cals
          FROM food_logs
          WHERE student_id = $1
            AND logged_at >= NOW() - INTERVAL '7 days'
-         GROUP BY DATE(logged_at)
+         GROUP BY DATE(logged_at AT TIME ZONE 'Asia/Kolkata')
        )
        SELECT COALESCE(AVG(day_cals), 0) as avg_calories, COUNT(*) as recorded_days
        FROM daily_totals`,
@@ -333,7 +333,7 @@ export const getFoodLogsByDate = async (studentId, date) => {
   try {
     const result = await query(
       `SELECT * FROM food_logs 
-       WHERE student_id = $1 AND DATE(logged_at) = $2
+       WHERE student_id = $1 AND DATE(logged_at AT TIME ZONE 'Asia/Kolkata') = $2::date
        ORDER BY logged_at DESC`,
       [studentId, date]
     );
